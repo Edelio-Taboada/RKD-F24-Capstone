@@ -10,6 +10,7 @@ class Robot:
     def __init__(self):
         """Initialize motion planner with robot controller"""
         self.dof = 7
+
     
     def forward_kinematcis(self, dh_parameters, thetas):
         """
@@ -38,10 +39,19 @@ class Robot:
             raise ValueError(f'Invalid number of joints: {thetas.shape[0]} found, expecting {self.dof}')
         
         # --------------- BEGIN STUDENT SECTION ------------------------------------------------
-        # TODO
         frames = np.zeros((4, 4, len(dh_parameters)+1))
-        
-        raise NotImplementedError("Implement forward kinematics")
+
+        for joint in len(1,dh_parameters+1):
+            theta = thetas[joint]
+            a = dh_parameters[joint][0]
+            alpha = dh_parameters[joint][1]
+            d = dh_parameters[joint][2]
+
+            frames[joint-1] = np.array([[np.cos(theta), -np.sin(theta)*np.cos(alpha), np.sin(theta)*np.sin(alpha), a*np.cos(theta)],
+                                        [np.sin(theta), np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],
+                                        [0,             np.sin(alpha),                np.cos(alpha),                             d],
+                                        [0,             0,                            0,                                         1]])
+        return frames
         # --------------- END STUDENT SECTION --------------------------------------------------
     
     def jacobians(self, thetas):
