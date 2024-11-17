@@ -2,7 +2,6 @@ import sys
 sys.path.append('../config')
 import numpy as np
 from frankapy import FrankaArm
-from autolab_core import RigidTransform
 from robot_config import RobotConfig
 from task_config import TaskConfig
 
@@ -22,7 +21,7 @@ class Robot:
         Parameters
         ----------
         dh_parameters: np.ndarray
-            DH parameters (you can choose to apply the offset to the tool flange or the pen tip)
+            DH parameters (you can choose to apply the offset to the tool flange, center of gripper, or the pen tip)
         thetas : np.ndarray
             All joint angles
             
@@ -75,7 +74,6 @@ class Robot:
         raise NotImplementedError("Implement jacobians")
         # --------------- END STUDENT SECTION --------------------------------------------
     
-    
     def _inverse_kinematics(self, target_pose, seed_joints):
         """
         Compute inverse kinematics using Jacobian pseudo-inverse method.
@@ -88,7 +86,7 @@ class Robot:
         
         Parameters
         ----------
-        target_pose : RigidTransform
+        target_pose : 4x4 np.ndarray
             Desired end-effector pose
         seed_joints : np.ndarray
             Initial joint configuration
@@ -100,17 +98,13 @@ class Robot:
             
         Hints
         -----
-        - Use get_pose() and get_jacobian() from robot arm
-        - Use _compute_rotation_error() for orientation error
-        - Check joint limits with is_joints_reachable()
-        - Track pose error magnitude for convergence
-        - The iteration parameters are defined in RobotConfig and TaskConfig
+        - Use get_pose() from robot arm
+        - Implement a helper function to track pose error magnitude for convergence
+        - The iteration parameters are defined in RobotConfig and TaskConfig, feel free to update them
         """
         
         if seed_joints.shape != (self.dof):
             raise ValueError(f'Invalid initial_thetas: Expected shape ({self.dof},), got {seed_joints.shape}.')
-        if type(target_pose) != RigidTransform:
-            raise ValueError('Invalid target_pose: Expected RigidTransform.')
         
         if seed_joints is None:
             seed_joints = self.robot.arm.get_joints()
