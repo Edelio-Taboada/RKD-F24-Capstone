@@ -2,7 +2,7 @@ import sys
 sys.path.append("../config")
 
 import numpy as np
-from robot_config import RobotConfig
+# from robot_config import RobotConfig
 from frankapy import FrankaArm
 from frankapy import FrankaArm, SensorDataMessageType
 from frankapy import FrankaConstants as FC
