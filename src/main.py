@@ -11,6 +11,7 @@ from frankapy import FrankaArm
 import time
 from calibrate_workspace import WorkspaceCalibrator
 from robot_config import RobotConfig
+from robot import Robot
 
 '''
 # Define default values
@@ -37,14 +38,9 @@ two_seconds = np.array([[0, 2]])
 five_seconds = np.array([[0, 5]])
 ten_seconds = np.array([[0, 10]])
 
-# # joint configs given by calibration: checkpoint
-# ON_MARKER = [0.1624053, 0.34693658, 0.31160452, -2.28293546, -0.15116802,  2.59795957, 1.43668825]
-# ABOVE_MARKER = [0.16167332, -0.14580426, 0.37693924, -2.44870918, -0.15881228, 2.47492598, 1.78272693]
-# HOME_POS = [5.35584243e-04, -7.85295146e-01, 2.69296343e-04, -2.35705560e+00, -4.33021669e-04, 1.57136411e+00, 7.85855047e-01]
-# ABOVE_BASKET = [-0.09936102, 0.43361226, 0.13748652, -1.88409354, -0.08281602, 1.84765035, 0.82561855]
-
-
 #calibration: post-checkpoint
+robot = Robot()
+
 calibrator = WorkspaceCalibrator()
 pen_positions = calibrator.calibrate_pen_holders()
 whiteboard_pose = calibrator.calibrate_whiteboard()
@@ -52,19 +48,23 @@ drop_pose = calibrator.calibrate_drop_location()
 
 config = RobotConfig()
 
-q0 = np.array(config.HOME_JOINTS)
-q1 = np.array(ABOVE_MARKER)
-q2 = np.array(ON_MARKER)
-q3 = np.array(ABOVE_BASKET)
+HOME = np.array(config.HOME_JOINTS)
+ON_MARKER_1 = np.array(pen_positions)
+WHITEBOARD_CENTER = np.array(whiteboard_pose)
+ABOVE_BIN = np.array(drop_pose)
 
-q0_q1 = np.array([[q0[i], q1[i]]for i in range(7)])
-q1_q2 = np.array([[q1[i], q2[i]]for i in range(7)])
-q2_q1 = np.array([[q2[i], q1[i]]for i in range(7)])
+HOME_ROTATION = robot.forward_kinematics(HOME)
+HOME_QUATERNION = utils._rotation_to_quaternion(HOME_ROTATION)
 
-q1_q3 = np.array([[q1[i], q3[i]]for i in range(7)])
+AM1_QUATERNION = pass #TODO: figure out quaternion above marker 1
 
-discritized_points_q0_q1 = utils.checkpoint_lerp(q0_q1, two_seconds)
-discritized_points_q1_q2 = utils.checkpoint_lerp(q1_q2, two_seconds)
+#HOME to above marker 1 (AM1)
+SLERP_HOME_2_AM1 = utils._slerp(HOME_QUATERNION, AM1_QUATERNION, two_seconds) 
+#above marker 1 (AM1) to on marker 1 (OM1)
+LERP_AM1_2_OM1 = utils.checkpoint_lerp(np.array([[ABOVE_MARKER_1[i], ON_MARKER_1[i]]for i in range(7)]), two_seconds)
+#on marker 1 (OM1) to above marker 1 (AM1)
+LERP_OM1_2_AM1 = utils.checkpoint_lerp(np.array([[ON_MARKER_1[i], ABOVE_MARKER_1[i]]for i in range(7)]), two_seconds)
+
 discritized_points_q2_q1 = utils.checkpoint_lerp(q2_q1, two_seconds)
 
 discritized_points_q1_q3 = utils.checkpoint_lerp(q1_q3, two_seconds)
@@ -77,15 +77,15 @@ if __name__ == '__main__':
     fa.open_gripper()
 
     # from home to above marker
-    tf.follow_joint_trajectory(discritized_points_q0_q1.T)
+    tf.follow_joint_trajectory(SLERP_HOME_2_AM1.T)
     time.sleep(2)
     # from above marker to on marker
-    tf.follow_joint_trajectory(discritized_points_q1_q2.T)
+    tf.follow_joint_trajectory(LERP_AM1_2_OM1.T)
     time.sleep(2)
     # grab marker
     fa.close_gripper()
     # pick up marker
-    tf.follow_joint_trajectory(discritized_points_q2_q1.T)
+    tf.follow_joint_trajectory(LERP_OM1_2_AM1.T)
     time.sleep(2)
     # bring marker to basket
     tf.follow_joint_trajectory(discritized_points_q1_q3.T)
