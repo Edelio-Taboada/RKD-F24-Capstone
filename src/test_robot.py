@@ -8,19 +8,10 @@ ABOVE_BASKET = [-0.09936102, 0.43361226, 0.13748652, -1.88409354, -0.08281602, 1
 
 MY_TEST = [0.40708775, 0.47630726, -0.0367942, -2.18650105, 0.13904405, 2.74513102, -0.76728278]
 
-MARKER_LEN = 0.107 #m
-# MARKER_LEN = 0
+# MARKER_LEN = 0.107 #m
+MARKER_LEN = 0
 
-DH_PARAMS_NO_THETAS = np.array([
-    [0,         0,          1/3],
-    [0,         -np.pi/2,   0],
-    [0,         np.pi/2,    0.316],
-    [0.0825,    np.pi/2,    0],
-    [-0.0825,   -np.pi/2,   0.384],
-    [0,         np.pi/2,    0],
-    [0,         np.pi/2,    0],
-    [0,         0,          MARKER_LEN]
-])
+
 
 if __name__ == '__main__':
     rob = Robot()
@@ -28,20 +19,19 @@ if __name__ == '__main__':
     # Testing FK:
     thetas = np.array(ON_MARKER)
     print("ON the marker, we have:")
-    print(rob.forward_kinematcis(DH_PARAMS_NO_THETAS, thetas))
+    print(rob.forward_kinematics(thetas)[-1])
     print()
 
     thetas = np.array(ABOVE_MARKER)
     print("ABOVE the marker, we have:")
-    print(rob.forward_kinematcis(DH_PARAMS_NO_THETAS, thetas))
+    print(rob.forward_kinematics(thetas)[-1])
     print()
 
     thetas = np.array(HOME_POS)
     print("at the HOME POS, we have:")
-    print(rob.forward_kinematcis(DH_PARAMS_NO_THETAS, thetas))
+    print(rob.forward_kinematics(thetas)[-1])
     print()
 
-    
 
 
-    # rob.jacobians(thetas)
+    print(rob.ef_jacobian(thetas))
