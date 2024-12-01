@@ -1,9 +1,9 @@
 import sys
 sys.path.append('../config')
 import numpy as np
-from frankapy import FrankaArm
-from robot_config import RobotConfig
-from task_config import TaskConfig
+# from frankapy import FrankaArm
+# from robot_config import RobotConfig
+# from task_config import TaskConfig
 
 class Robot:
     def __init__(self):
@@ -38,10 +38,16 @@ class Robot:
             raise ValueError(f'Invalid number of joints: {thetas.shape[0]} found, expecting {self.dof}')
         
         # --------------- BEGIN STUDENT SECTION ------------------------------------------------
-        frames = np.zeros((4, 4, len(dh_parameters)+1))
+        frames = np.zeros((self.dof + 1, 4, 4))
+        end_frame = np.array([
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ])
 
-        for joint in len(1,dh_parameters+1):
-            theta = thetas[joint]
+        for joint in range(1, self.dof + 1):
+            theta = thetas[joint-1]
             a = dh_parameters[joint][0]
             alpha = dh_parameters[joint][1]
             d = dh_parameters[joint][2]
@@ -50,8 +56,12 @@ class Robot:
                                         [np.sin(theta), np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],
                                         [0,             np.sin(alpha),                np.cos(alpha),                             d],
                                         [0,             0,                            0,                                         1]])
-        return frames
+            
+            end_frame = np.matmul(end_frame, frames[joint-1])
+        
+        return end_frame
         # --------------- END STUDENT SECTION --------------------------------------------------
+
     
     def jacobians(self, thetas):
         """
@@ -81,7 +91,15 @@ class Robot:
         # - Compute numerical derivatives for x, y, and positions.
         # - Determine the rotational component based on joint contributions.
 
-        raise NotImplementedError("Implement jacobians")
+
+
+        for frame in range(0, self.dof + 1):
+            for joint in range(0, self.dof):
+                print(thetas[joint])
+
+
+
+        # raise NotImplementedError("Implement jacobians")
         # --------------- END STUDENT SECTION --------------------------------------------
     
     def _inverse_kinematics(self, target_pose, seed_joints):
@@ -124,3 +142,4 @@ class Robot:
 
         raise NotImplementedError("Implement inverse kinematics")
         # --------------- END STUDENT SECTION --------------------------------------------------
+
