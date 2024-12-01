@@ -33,5 +33,5 @@ if __name__ == '__main__':
     print()
 
 
-
+    # printing jacobian
     print(rob.ef_jacobian(thetas))
