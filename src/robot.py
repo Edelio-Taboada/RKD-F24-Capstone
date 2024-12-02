@@ -160,6 +160,10 @@ class Robot:
         # raise NotImplementedError("Implement jacobians")
         # --------------- END STUDENT SECTION --------------------------------------------
     
+
+    def pose_error_magnitude(self, curr_pose, target_pose):
+        return np.linalg.norm(curr_pose - target_pose)
+    
     def _inverse_kinematics(self, target_pose, seed_joints):
         """
         Compute inverse kinematics using Jacobian pseudo-inverse method.
@@ -197,7 +201,39 @@ class Robot:
         
         # --------------- BEGIN STUDENT SECTION ------------------------------------------------
         # TODO: Implement gradient inverse kinematics
+        # thetas is a copy of the original joint configuration
+        thetas = seed_joints
 
-        raise NotImplementedError("Implement inverse kinematics")
+        #step size for gradient descent (arbitrary)
+        step_size = 0.1
+
+        #once the norm of the computed gradient is less than the stopping condition
+        #we stop optimizing
+        stopping_condition = 0.00005
+
+        #max number of iterations
+        max_iter = 200
+        num_iter = 0
+
+        while num_iter < max_iter:
+            # [x,y,z,theta] goal
+            cost_gradient = np.zeros(self.dof)
+            #compute current end effector pose
+            ee_pose = self.forward_kinematics(thetas)
+            #compute the difference between current position and goal
+            distance = self.pose_error_magnitude(ee_pose, target_pose)
+            #compute the Jacobian
+
+            #NEED TO IMPLEMENT JACOBIANS
+            J = self.ef_jacobian(thetas)
+            # compute cost gradient
+            cost_gradient = np.transpose(J) @ distance
+            
+            thetas -= step_size * cost_gradient
+
+            if np.linalg.norm(cost_gradient) < stopping_condition:
+                return thetas
+            num_iter+=1
+        return thetas
         # --------------- END STUDENT SECTION --------------------------------------------------
 
