@@ -39,6 +39,12 @@ if __name__ == '__main__':
 
     # printing jacobian
     # print(rob.ef_jacobian(thetas))
+    print("Going from above the marker at ")
+    print(ABOVE_MARKER)
 
     IK_test1 = rob._inverse_kinematics(pose_on_marker, np.array(ABOVE_MARKER))
+    print("to on the marker at ")
+    print(IK_test1)
+    print("which should be close to ")
+    print(ON_MARKER)
 

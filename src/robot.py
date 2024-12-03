@@ -272,8 +272,8 @@ class Robot:
             # print("********************************************************************")
 
             if np.linalg.norm(cost_gradient) < stopping_condition:
-                print("FINISHED YAY")
-                print(num_iter)
+                # print("FINISHED YAY")
+                # print(num_iter)
                 return thetas
             num_iter+=1
         
