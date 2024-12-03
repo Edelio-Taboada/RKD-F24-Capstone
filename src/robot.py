@@ -7,10 +7,32 @@ import utils
 # from task_config import TaskConfig
 
 class Robot:
+    # def __init__(self, L_frame, R_frame, M_frame):
     def __init__(self):
         """Initialize motion planner with robot controller"""
+        # frames are from calibrate_workspace
         self.dof = 7
         self.marker_len = 0.107
+
+        self.DH_PARAMS_NO_THETAS = np.array([
+            [0,         0,          1/3],
+            [0,         -np.pi/2,   0],
+            [0,         np.pi/2,    0.316],
+            [0.0825,    np.pi/2,    0],
+            [-0.0825,   -np.pi/2,   0.384],
+            [0,         np.pi/2,    0],
+            [0.088,     np.pi/2,    0],
+            [0,         0,          self.marker_len]
+        ])
+
+        # given initialized frames, create the normal vector for the whiteboard
+        # L_points = L_frame[0:3, -1]
+        # R_points = R_frame[0:3, -1]
+        # M_points = M_frame[0:3, -1]
+
+        # A = L_points - M_points
+        # B = R_points - M_points
+        # self.wb_normal = np.cross(A, B)
 
     def change_marker_len(self, new_len):
         self.marker_len = new_len
@@ -28,14 +50,25 @@ class Robot:
 
         for joint in range(1, self.dof + 1):
             theta = thetas[joint-1]
-            a = dh_parameters[joint][0]
-            alpha = dh_parameters[joint][1]
-            d = dh_parameters[joint][2]
+            a = dh_parameters[joint-1][0]
+            alpha = dh_parameters[joint-1][1]
+            d = dh_parameters[joint-1][2]
 
             frames[joint-1] = np.array([[np.cos(theta), -np.sin(theta)*np.cos(alpha), np.sin(theta)*np.sin(alpha), a*np.cos(theta)],
                                         [np.sin(theta), np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],
                                         [0,             np.sin(alpha),                np.cos(alpha),                             d],
                                         [0,             0,                            0,                                         1]])
+        # end effector frame
+        theta = 0
+        a = 0
+        alpha = 0
+        d = self.marker_len
+
+        frames[self.dof] = np.array([[np.cos(theta), -np.sin(theta)*np.cos(alpha), np.sin(theta)*np.sin(alpha), a*np.cos(theta)],
+                                    [np.sin(theta), np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],
+                                    [0,             np.sin(alpha),                np.cos(alpha),                             d],
+                                    [0,             0,                            0,                                         1]])
+
         return frames
     
     def forward_kinematics(self, thetas):
@@ -66,17 +99,7 @@ class Robot:
         
         # --------------- BEGIN STUDENT SECTION ------------------------------------------------
         
-        DH_PARAMS_NO_THETAS = np.array([
-            [0,         0,          1/3],
-            [0,         -np.pi/2,   0],
-            [0,         np.pi/2,    0.316],
-            [0.0825,    np.pi/2,    0],
-            [-0.0825,   -np.pi/2,   0.384],
-            [0,         np.pi/2,    0],
-            [0,         np.pi/2,    0],
-            [0,         0,          self.marker_len]
-        ])
-        dh_frames = self.dh_parameter_frames(DH_PARAMS_NO_THETAS, thetas)
+        dh_frames = self.dh_parameter_frames(self.DH_PARAMS_NO_THETAS, thetas)
 
         all_frames = np.zeros((self.dof + 1, 4, 4))
 
@@ -89,6 +112,8 @@ class Robot:
 
         for joint in range(1, self.dof + 1):
             all_frames[joint, :, :] = np.matmul(all_frames[joint-1, :, :], dh_frames[joint-1])
+            if (joint == self.dof) :
+                all_frames[joint, :, :] = np.matmul(all_frames[joint, :, :], dh_frames[joint])
         
         return all_frames
         # --------------- END STUDENT SECTION --------------------------------------------------
@@ -169,9 +194,9 @@ class Robot:
         # print("rotation")
         ee_rotation = frame[0:3, 0:3]
         # print(ee_rotation)
-        ee_quaternion = utils._rotation_to_quaternion(ee_rotation)
+        roll, pitch, yaw = utils.rotation_matrix_to_euler_angles(ee_rotation)
         # print(ee_quaternion)
-        ee_RPY = ee_quaternion[1:]
+        ee_RPY = [roll, pitch, yaw]
         # print("RPY")
         # print(ee_RPY)
         # print("XYZ:")

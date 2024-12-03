@@ -38,13 +38,25 @@ if __name__ == '__main__':
 
 
     # printing jacobian
-    # print(rob.ef_jacobian(thetas))
+    rob.change_marker_len(0)
+    zeros = np.array([0, 0, 0, 0, 0, 0, 0])
+    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!DH:")
+    dh_frames = rob.dh_parameter_frames(rob.DH_PARAMS_NO_THETAS, zeros)
+    print(dh_frames)
+    print("*************FK:")
+    print(rob.forward_kinematics(zeros))
+    print("-------------J:")
+    print(rob.ef_jacobian(zeros))
+    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     print("Going from above the marker at ")
     print(ABOVE_MARKER)
 
+    rob.change_marker_len(0.107)
     IK_test1 = rob._inverse_kinematics(pose_on_marker, np.array(ABOVE_MARKER))
     print("to on the marker at ")
     print(IK_test1)
+    print(rob.forward_kinematics(IK_test1)[-1])
     print("which should be close to ")
     print(ON_MARKER)
+    print(pose_on_marker)
 

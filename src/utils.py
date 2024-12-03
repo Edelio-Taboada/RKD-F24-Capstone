@@ -184,3 +184,15 @@ def _quaternion_to_rotation(self, q):
         [2*qx*qy + 2*qz*qw,      1 - 2*qx*qx - 2*qz*qz, 2*qy*qz - 2*qx*qw],
         [2*qx*qz - 2*qy*qw,      2*qy*qz + 2*qx*qw,     1 - 2*qx*qx - 2*qy*qy]
     ])
+
+def rotation_matrix_to_euler_angles(R):
+    # Roll (x-axis rotation)
+    roll = np.arctan2(R[2, 1], R[2, 2])
+
+    # Pitch (y-axis rotation)
+    pitch = np.arctan2(-R[2, 0], np.sqrt(R[2, 1]**2 + R[2, 2]**2))
+
+    # Yaw (z-axis rotation)
+    yaw = np.arctan2(R[1, 0], R[0, 0])
+
+    return roll, pitch, yaw
