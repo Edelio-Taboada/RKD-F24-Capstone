@@ -1,6 +1,7 @@
 import sys
 sys.path.append('../config')
 import numpy as np
+import utils
 # from frankapy import FrankaArm
 # from robot_config import RobotConfig
 # from task_config import TaskConfig
@@ -161,8 +162,27 @@ class Robot:
         # --------------- END STUDENT SECTION --------------------------------------------
     
 
-    def pose_error_magnitude(self, curr_pose, target_pose):
-        return np.linalg.norm(curr_pose - target_pose)
+    def frame_to_pose(self, frame):
+        # print("POSE:")
+        # print(frame)
+        
+        # print("rotation")
+        ee_rotation = frame[0:3, 0:3]
+        # print(ee_rotation)
+        ee_quaternion = utils._rotation_to_quaternion(ee_rotation)
+        # print(ee_quaternion)
+        ee_RPY = ee_quaternion[1:]
+        # print("RPY")
+        # print(ee_RPY)
+        # print("XYZ:")
+        ee_XYZ = frame[0:3, 3]
+        # print(ee_XYZ)
+
+        ee_converted = np.zeros((6, 1))
+        ee_converted[0:3, 0] = ee_XYZ
+        ee_converted[3:6, 0] = ee_RPY
+        # print(ee_converted)
+        return ee_converted
     
     def _inverse_kinematics(self, target_pose, seed_joints):
         """
@@ -193,7 +213,7 @@ class Robot:
         - The iteration parameters are defined in RobotConfig and TaskConfig, feel free to update them
         """
         
-        if seed_joints.shape != (self.dof):
+        if seed_joints.shape != (self.dof,):
             raise ValueError(f'Invalid initial_thetas: Expected shape ({self.dof},), got {seed_joints.shape}.')
         
         if seed_joints is None:
@@ -202,38 +222,61 @@ class Robot:
         # --------------- BEGIN STUDENT SECTION ------------------------------------------------
         # TODO: Implement gradient inverse kinematics
         # thetas is a copy of the original joint configuration
+        target_pose = self.frame_to_pose(target_pose)
+
         thetas = seed_joints
 
         #step size for gradient descent (arbitrary)
-        step_size = 0.1
+        step_size = 0.13
 
         #once the norm of the computed gradient is less than the stopping condition
         #we stop optimizing
         stopping_condition = 0.00005
 
         #max number of iterations
-        max_iter = 200
+        max_iter = 10000
         num_iter = 0
 
         while num_iter < max_iter:
             # [x,y,z,theta] goal
             cost_gradient = np.zeros(self.dof)
             #compute current end effector pose
-            ee_pose = self.forward_kinematics(thetas)
+            ee_pose = self.frame_to_pose(self.forward_kinematics(thetas)[-1])
+
             #compute the difference between current position and goal
-            distance = self.pose_error_magnitude(ee_pose, target_pose)
+            # distance = self.pose_error_magnitude(ee_pose, target_pose)
+            distance = ee_pose - target_pose
             #compute the Jacobian
 
             #NEED TO IMPLEMENT JACOBIANS
             J = self.ef_jacobian(thetas)
+            # print(J)
+            # print(J.shape)
             # compute cost gradient
-            cost_gradient = np.transpose(J) @ distance
+            # print(distance)
+            # print(distance.shape)
+            cost_gradient = np.matmul(np.transpose(J), distance)
+
+            # print(":D")
+            # print(cost_gradient.T[0])
+            # print(cost_gradient.T[0].shape)
+            # print(thetas)
+            # print(thetas.shape)
             
-            thetas -= step_size * cost_gradient
+            thetas -= (step_size * cost_gradient.T[0])
+
+            # print("********************************************************************")
+            # print("********************************************************************")
+            # print(np.linalg.norm(cost_gradient))
+            # print("********************************************************************")
+            # print("********************************************************************")
 
             if np.linalg.norm(cost_gradient) < stopping_condition:
+                print("FINISHED YAY")
+                print(num_iter)
                 return thetas
             num_iter+=1
+        
+        print("RAN OUT OF ITERATIONS")
         return thetas
         # --------------- END STUDENT SECTION --------------------------------------------------
-

@@ -1,5 +1,6 @@
 from robot import Robot
 import numpy as np 
+import utils
 
 ON_MARKER = [0.1624053, 0.34693658, 0.31160452, -2.28293546, -0.15116802,  2.59795957, 1.43668825]
 ABOVE_MARKER = [0.16167332, -0.14580426, 0.37693924, -2.44870918, -0.15881228, 2.47492598, 1.78272693]
@@ -19,19 +20,25 @@ if __name__ == '__main__':
     # Testing FK:
     thetas = np.array(ON_MARKER)
     print("ON the marker, we have:")
-    print(rob.forward_kinematics(thetas)[-1])
+    pose_on_marker = rob.forward_kinematics(thetas)[-1]
+    print(pose_on_marker)
     print()
 
     thetas = np.array(ABOVE_MARKER)
     print("ABOVE the marker, we have:")
-    print(rob.forward_kinematics(thetas)[-1])
+    pose_above_marker = rob.forward_kinematics(thetas)[-1]
+    print(pose_above_marker)
     print()
 
     thetas = np.array(HOME_POS)
     print("at the HOME POS, we have:")
-    print(rob.forward_kinematics(thetas)[-1])
+    pose_at_home = rob.forward_kinematics(thetas)[-1]
+    print(pose_at_home)
     print()
 
 
     # printing jacobian
-    print(rob.ef_jacobian(thetas))
+    # print(rob.ef_jacobian(thetas))
+
+    IK_test1 = rob._inverse_kinematics(pose_on_marker, np.array(ABOVE_MARKER))
+
