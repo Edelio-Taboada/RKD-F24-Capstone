@@ -72,17 +72,17 @@ class Robot:
 
             frames[joint] = self.dh_frame_from_vals(alpha, a, d, theta)
         
-        theta = 0
+        theta = -np.pi/4
         a = 0
         alpha = 0
-        d = 0.107
+        d = 0.107 + 0.1034
 
         frames[self.dof] = self.dh_frame_from_vals(alpha, a, d, theta)
 
         theta = 0
         a = 0
         alpha = 0
-        d = 0.1034
+        d = 0
 
         frames[self.dof+1] = self.dh_frame_from_vals(alpha, a, d, theta)
         # end effector frame
