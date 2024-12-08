@@ -13,7 +13,7 @@ class Robot:
         """Initialize motion planner with robot controller"""
         # frames are from calibrate_workspace
         self.dof = 7
-        self.marker_len = 0.107
+        self.marker_len = 0.1034
 
         self.DH_PARAMS_NO_THETAS = np.array([
             [0,         0,          1/3],
@@ -23,8 +23,8 @@ class Robot:
             [-0.0825,   -np.pi/2,   0.384],
             [0,         np.pi/2,    0],
             [0.088,     np.pi/2,    0],
-            [0,         0,          0.1034],
-            [0,         0,          0.107]
+            [0,         0,          0.107],
+            [0,         0,          self.marker_len]
         ])
 
         # given initialized frames, create the normal vector for the whiteboard
@@ -75,7 +75,7 @@ class Robot:
         theta = -np.pi/4
         a = 0
         alpha = 0
-        d = 0.107 + 0.1034
+        d = 0.107 + self.marker_len
 
         frames[self.dof] = self.dh_frame_from_vals(alpha, a, d, theta)
 
@@ -228,25 +228,32 @@ class Robot:
         R_cur = cur_pose[0:3, 0:3]
         R_target = target_pose[0:3, 0:3]
 
-        R_needed = np.matmul(R_cur.T, R_target)
+        R_error = np.matmul(R_cur.T, R_target)
 
-        rotation = R.from_matrix(R_needed)
-        # print(rotation)
-        # axis angle representation
+        # Credit: Shahram :D
+        orientation_error = 0.5 * np.array([
+            R_error[2, 1] - R_error[1, 2],   # Angular error around x-axis
+            R_error[0, 2] - R_error[2, 0],   # Angular error around y-axis
+            R_error[1, 0] - R_error[0, 1]    # Angular error around z-axis
+        ])
+
+        # rotation = R.from_matrix(R_needed)
+        # # print(rotation)
+        # # axis angle representation
         
-        axis_angle = rotation.as_rotvec()
-        # print(axis_angle)
-        angle = np.linalg.norm(axis_angle)  # Rotation angle in radians
-        # print(angle)
-        axis = axis_angle * angle if angle != 0 else [0, 0, 0]  # Normalized axis of rotation
+        # axis_angle = rotation.as_rotvec()
+        # # print(axis_angle)
+        # angle = np.linalg.norm(axis_angle)  # Rotation angle in radians
+        # # print(angle)
+        # axis = axis_angle * angle if angle != 0 else [0, 0, 0]  # Normalized axis of rotation
+        # # error_angle = np.matmul(R_cur, axis)
         # error_angle = np.matmul(R_cur, axis)
-        error_angle = np.matmul(R_cur, axis)
 
         # print(axis.T)
         # print("error:")
         # print(error_angle)
-        print(axis_angle)
-        print(angle)
+        # print(axis_angle)
+        # print(angle)
 
         # ee_RPY = axis
         # print("RPY")
@@ -260,7 +267,7 @@ class Robot:
 
         ee_converted = np.zeros((6, 1))
         ee_converted[0:3, 0] = ee_XYZ
-        ee_converted[3:6, 0] = axis_angle
+        ee_converted[3:6, 0] = orientation_error
 
         # print(ee_converted)
         # print()
@@ -314,11 +321,11 @@ class Robot:
         thetas = seed_joints
 
         #step size for gradient descent (arbitrary)
-        step_size = 0.01
+        step_size = 0.1
 
         #once the norm of the computed gradient is less than the stopping condition
         #we stop optimizing
-        stopping_condition = 0.005
+        stopping_condition = 0.00005
 
         #max number of iterations
         max_iter = 1000
