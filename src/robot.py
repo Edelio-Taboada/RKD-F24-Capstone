@@ -2,6 +2,7 @@ import sys
 sys.path.append('../config')
 import numpy as np
 import utils
+from scipy.spatial.transform import Rotation as R
 # from frankapy import FrankaArm
 # from robot_config import RobotConfig
 # from task_config import TaskConfig
@@ -37,6 +38,20 @@ class Robot:
     def change_marker_len(self, new_len):
         self.marker_len = new_len
 
+    def dh_frame_from_vals(self, alpha, a, d, theta):
+        
+        c_a = np.cos(alpha)
+        s_a = np.sin(alpha)
+        c_t = np.cos(theta)
+        s_t = np.sin(theta)
+
+        return np.array([
+            [c_t,      -s_t,        0,      a       ],
+            [c_a*s_t,   c_a*c_t,   -s_a,   -d*s_a  ],
+            [s_a*s_t,   c_t*s_a,    c_a,    d*c_a   ],
+            [0,         0,          0,      1       ]
+        ])
+
     
     def dh_parameter_frames(self, dh_parameters, thetas):
         if thetas.ndim != 1:
@@ -54,20 +69,14 @@ class Robot:
             alpha = dh_parameters[joint-1][1]
             d = dh_parameters[joint-1][2]
 
-            frames[joint-1] = np.array([[np.cos(theta), -np.sin(theta)*np.cos(alpha), np.sin(theta)*np.sin(alpha), a*np.cos(theta)],
-                                        [np.sin(theta), np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],
-                                        [0,             np.sin(alpha),                np.cos(alpha),                             d],
-                                        [0,             0,                            0,                                         1]])
+            frames[joint-1] = self.dh_frame_from_vals(alpha, a, d, theta)
         # end effector frame
         theta = 0
         a = 0
         alpha = 0
         d = self.marker_len
 
-        frames[self.dof] = np.array([[np.cos(theta), -np.sin(theta)*np.cos(alpha), np.sin(theta)*np.sin(alpha), a*np.cos(theta)],
-                                    [np.sin(theta), np.cos(theta)*np.cos(alpha), -np.cos(theta)*np.sin(alpha), a*np.sin(theta)],
-                                    [0,             np.sin(alpha),                np.cos(alpha),                             d],
-                                    [0,             0,                            0,                                         1]])
+        frames[self.dof] = self.dh_frame_from_vals(alpha, a, d, theta)
 
         return frames
     
@@ -187,26 +196,41 @@ class Robot:
         # --------------- END STUDENT SECTION --------------------------------------------
     
 
-    def frame_to_pose(self, frame):
+    def error_from_poses(self, cur_pose, target_pose):
         # print("POSE:")
         # print(frame)
         
         # print("rotation")
-        ee_rotation = frame[0:3, 0:3]
+        # ee_rotation = frame[0:3, 0:3]
         # print(ee_rotation)
-        roll, pitch, yaw = utils.rotation_matrix_to_euler_angles(ee_rotation)
-        # print(ee_quaternion)
-        ee_RPY = [roll, pitch, yaw]
+        R_cur = cur_pose[0:3, 0:3]
+        R_target = target_pose[0:3, 0:3]
+
+        R_needed = np.matmul(R_cur.T, R_target)
+
+        rotation = R.from_matrix(R_needed)
+        # axis angle representation
+        
+        axis_angle = rotation.as_rotvec()
+        angle = np.linalg.norm(axis_angle)  # Rotation angle in radians
+        axis = axis_angle / angle if angle != 0 else [0, 0, 0]  # Normalized axis of rotation
+        error_angle = np.matmul(R_cur, axis)
+
+        # ee_RPY = axis
         # print("RPY")
         # print(ee_RPY)
         # print("XYZ:")
-        ee_XYZ = frame[0:3, 3]
+        subtracted = cur_pose - target_pose
+        ee_XYZ = subtracted[0:3, 3]
         # print(ee_XYZ)
 
         ee_converted = np.zeros((6, 1))
         ee_converted[0:3, 0] = ee_XYZ
-        ee_converted[3:6, 0] = ee_RPY
+        ee_converted[3:6, 0] = error_angle
+
         # print(ee_converted)
+        # print()
+        
         return ee_converted
     
     def _inverse_kinematics(self, target_pose, seed_joints):
@@ -247,30 +271,34 @@ class Robot:
         # --------------- BEGIN STUDENT SECTION ------------------------------------------------
         # TODO: Implement gradient inverse kinematics
         # thetas is a copy of the original joint configuration
-        target_pose = self.frame_to_pose(target_pose)
+        
+        print("Trying to get to target_pose:")
+        print(target_pose)
+        print()
+        print()
 
         thetas = seed_joints
 
         #step size for gradient descent (arbitrary)
-        step_size = 0.13
+        step_size = 0.01
 
         #once the norm of the computed gradient is less than the stopping condition
         #we stop optimizing
         stopping_condition = 0.00005
 
         #max number of iterations
-        max_iter = 10000
+        max_iter = 1000
         num_iter = 0
 
         while num_iter < max_iter:
             # [x,y,z,theta] goal
             cost_gradient = np.zeros(self.dof)
             #compute current end effector pose
-            ee_pose = self.frame_to_pose(self.forward_kinematics(thetas)[-1])
+            # ee_pose = self.frame_to_pose(self.forward_kinematics(thetas)[-1])
 
             #compute the difference between current position and goal
-            # distance = self.pose_error_magnitude(ee_pose, target_pose)
-            distance = ee_pose - target_pose
+            # error = self.pose_error_magnitude(ee_pose, target_pose)
+            error = self.error_from_poses(self.forward_kinematics(thetas)[-1], target_pose)
             #compute the Jacobian
 
             #NEED TO IMPLEMENT JACOBIANS
@@ -278,21 +306,23 @@ class Robot:
             # print(J)
             # print(J.shape)
             # compute cost gradient
-            # print(distance)
-            # print(distance.shape)
-            cost_gradient = np.matmul(np.transpose(J), distance)
+            # print(error)
+            # print(error.shape)
+            cost_gradient = np.matmul(np.transpose(J), error)
 
             # print(":D")
-            # print(cost_gradient.T[0])
+            print(cost_gradient.T[0])
+            # print(cost_gradient)
             # print(cost_gradient.T[0].shape)
-            # print(thetas)
+            print(thetas)
             # print(thetas.shape)
             
             thetas -= (step_size * cost_gradient.T[0])
 
             # print("********************************************************************")
             # print("********************************************************************")
-            # print(np.linalg.norm(cost_gradient))
+            print(np.linalg.norm(cost_gradient))
+            # print(np.linalg.norm(cost_gradient.T[0]))
             # print("********************************************************************")
             # print("********************************************************************")
 
@@ -303,5 +333,8 @@ class Robot:
             num_iter+=1
         
         print("RAN OUT OF ITERATIONS")
+        print(np.linalg.norm(cost_gradient))
+        print("target pose: ")
+        print(target_pose)
         return thetas
         # --------------- END STUDENT SECTION --------------------------------------------------

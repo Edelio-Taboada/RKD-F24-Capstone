@@ -76,22 +76,32 @@ if __name__ == '__main__':
     fa.reset_joints()
     fa.open_gripper()
 
-    # from home to above marker
-    tf.follow_joint_trajectory(SLERP_HOME_2_AM1.T)
-    time.sleep(2)
-    # from above marker to on marker
-    tf.follow_joint_trajectory(LERP_AM1_2_OM1.T)
-    time.sleep(2)
-    # grab marker
-    fa.close_gripper()
-    # pick up marker
-    tf.follow_joint_trajectory(LERP_OM1_2_AM1.T)
-    time.sleep(2)
-    # bring marker to basket
-    tf.follow_joint_trajectory(discritized_points_q1_q3.T)
-    time.sleep(2)
-    # drop marker
-    fa.open_gripper()
+    thetas = fa.get_joints()
+    correct_J = fa.get_jacobian()
+
+    my_J = robot.ef_jacobian(thetas)
+
+    print(correct_J)
+    print(my_J)
+
+    # old code:
+
+    # # from home to above marker
+    # tf.follow_joint_trajectory(SLERP_HOME_2_AM1.T)
+    # time.sleep(2)
+    # # from above marker to on marker
+    # tf.follow_joint_trajectory(LERP_AM1_2_OM1.T)
+    # time.sleep(2)
+    # # grab marker
+    # fa.close_gripper()
+    # # pick up marker
+    # tf.follow_joint_trajectory(LERP_OM1_2_AM1.T)
+    # time.sleep(2)
+    # # bring marker to basket
+    # tf.follow_joint_trajectory(discritized_points_q1_q3.T)
+    # time.sleep(2)
+    # # drop marker
+    # fa.open_gripper()
 
     # return home
     fa.reset_joints()
