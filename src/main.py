@@ -76,17 +76,21 @@ if __name__ == '__main__':
     fa.reset_joints()
     fa.open_gripper()
 
+    # robot.marker_len(0.1034)
+
+    print("NOT ZEROS!!!!!!!!")
     thetas = fa.get_joints()
 
+    # thetas = np.array([np.pi/2, np.pi/2, np.pi/2, 0, 0, 0, 0])
+    print(thetas)
 
-    correct_FK = fa.get_links_transform(thetas)[-1]
+    correct_FK = fa.get_links_transforms(thetas)
 
     correct_J = fa.get_jacobian(thetas)
 
     my_J = robot.ef_jacobian(thetas)
 
-    my_FK = robot.forward_kinematics(thetas)[-1]
-
+    my_FK = robot.forward_kinematics(thetas)
     print("This is the correct FK EF frame from the robot:")
     print(correct_FK)
     print()
@@ -99,6 +103,46 @@ if __name__ == '__main__':
     print()
     print("and this is ours:")
     print(my_J)
+
+
+    # print("ZEROS!!!!!!!!")
+    # thetas = np.array([0, 0, 0, 0, 0, 0, 0])
+    # robot.change_marker_len(0.2104)
+
+    # # correct_FK = fa.get_links_transforms(thetas)
+
+    # correct_J = fa.get_jacobian(thetas)
+
+    
+
+    # # my_FK = robot.forward_kinematics(thetas)
+    # # print("This is the correct FK EF frame from the robot:")
+    # # print(correct_FK)
+    # # print()
+    # # print("and this is ours:")
+    # # print(my_FK)
+    # # print()
+    # # print()
+    # print("This is the correct Jacobian from the robot:")
+    # print(correct_J)
+    # print()
+    # print("and this is ours:")
+
+    # my_J = robot.ef_jacobian(thetas)
+    # print(my_J)
+
+    # print("diving into the jacobians:")
+    # for i in range(7):
+    #     print("COLUMN " + str(i))
+    #     print("top 3 (linears) from column " + str(i) + ":")
+    #     print(str(correct_J[0, i]) + "compared to our -->" + str(my_J[0, i]))
+    #     print(str(correct_J[1, i]) + "compared to our -->" + str(my_J[1, i]))
+    #     print(str(correct_J[2, i]) + "compared to our -->" + str(my_J[2, i]))
+        
+    #     print("bottom 3 (angulars) from column " + str(i) + ":")
+    #     print(str(correct_J[3, i]) + "compared to our -->" + str(my_J[3, i]))
+    #     print(str(correct_J[4, i]) + "compared to our -->" + str(my_J[4, i]))
+    #     print(str(correct_J[5, i]) + "compared to our -->" + str(my_J[5, i]))
 
     # old code:
 

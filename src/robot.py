@@ -23,7 +23,8 @@ class Robot:
             [-0.0825,   -np.pi/2,   0.384],
             [0,         np.pi/2,    0],
             [0.088,     np.pi/2,    0],
-            [0,         0,          self.marker_len]
+            [0,         0,          0.1034],
+            [0,         0,          0.107]
         ])
 
         # given initialized frames, create the normal vector for the whiteboard
@@ -61,22 +62,36 @@ class Robot:
             raise ValueError(f'Invalid number of joints: {thetas.shape[0]} found, expecting {self.dof}')
         
         # --------------- BEGIN STUDENT SECTION ------------------------------------------------
-        frames = np.zeros((self.dof + 1, 4, 4))
+        frames = np.zeros((self.dof + 2, 4, 4))
 
-        for joint in range(1, self.dof + 1):
-            theta = thetas[joint-1]
-            a = dh_parameters[joint-1][0]
-            alpha = dh_parameters[joint-1][1]
-            d = dh_parameters[joint-1][2]
+        for joint in range(0, self.dof):
+            theta = thetas[joint]
+            a = dh_parameters[joint][0]
+            alpha = dh_parameters[joint][1]
+            d = dh_parameters[joint][2]
 
-            frames[joint-1] = self.dh_frame_from_vals(alpha, a, d, theta)
-        # end effector frame
+            frames[joint] = self.dh_frame_from_vals(alpha, a, d, theta)
+        
         theta = 0
         a = 0
         alpha = 0
-        d = self.marker_len
+        d = 0.107
 
         frames[self.dof] = self.dh_frame_from_vals(alpha, a, d, theta)
+
+        theta = 0
+        a = 0
+        alpha = 0
+        d = 0.1034
+
+        frames[self.dof+1] = self.dh_frame_from_vals(alpha, a, d, theta)
+        # end effector frame
+        # theta = 0
+        # a = 0
+        # alpha = 0
+        # d = self.marker_len
+
+        # frames[self.dof] = self.dh_frame_from_vals(alpha, a, d, theta)
 
         return frames
     
@@ -109,6 +124,8 @@ class Robot:
         # --------------- BEGIN STUDENT SECTION ------------------------------------------------
         
         dh_frames = self.dh_parameter_frames(self.DH_PARAMS_NO_THETAS, thetas)
+        # print("MY DH FRAMES")
+        # print(dh_frames)
 
         all_frames = np.zeros((self.dof + 1, 4, 4))
 
@@ -122,7 +139,11 @@ class Robot:
         for joint in range(1, self.dof + 1):
             all_frames[joint, :, :] = np.matmul(all_frames[joint-1, :, :], dh_frames[joint-1])
             if (joint == self.dof) :
+                # print("bing bong")
+                # print(dh_frames[joint])
+                # print(dh_frames[joint+1])
                 all_frames[joint, :, :] = np.matmul(all_frames[joint, :, :], dh_frames[joint])
+                all_frames[joint, :, :] = np.matmul(all_frames[joint, :, :], dh_frames[joint+1])
         
         return all_frames
         # --------------- END STUDENT SECTION --------------------------------------------------
@@ -168,6 +189,7 @@ class Robot:
 
         # last frame, first three rows, last column
         O_6 = fk_frames[-1, 0:3, -1]
+        # print(O_6)
 
         # print(O_6)
 
@@ -176,12 +198,12 @@ class Robot:
             # given the curent joint we are looking at:
                 # we pick out the "previous" fk_frame,
                 # and take the first three rows of the 3rd column (the z-column)
-            Z_i1 = fk_frames[i1, 0:3, 2]
+            Z_i1 = fk_frames[i1+1, 0:3, 2]
             jacobian[3:6, i1] = Z_i1
 
             # now we do linear stuff:
                 # first let's grab O_{i-1}
-            O_i1 = fk_frames[i1, 0:3, -1]
+            O_i1 = fk_frames[i1+1, 0:3, -1]
             O_subtracted = O_6 - O_i1
 
                 # we can use the same Z_i1 we already grabbed for the angle,
