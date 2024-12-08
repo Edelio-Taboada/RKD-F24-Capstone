@@ -41,33 +41,33 @@ ten_seconds = np.array([[0, 10]])
 #calibration: post-checkpoint
 robot = Robot()
 
-calibrator = WorkspaceCalibrator()
-pen_positions = calibrator.calibrate_pen_holders()
-whiteboard_pose = calibrator.calibrate_whiteboard()
-drop_pose = calibrator.calibrate_drop_location()
+# calibrator = WorkspaceCalibrator()
+# pen_positions = calibrator.calibrate_pen_holders()
+# whiteboard_pose = calibrator.calibrate_whiteboard()
+# drop_pose = calibrator.calibrate_drop_location()
 
-config = RobotConfig()
+# config = RobotConfig()
 
-HOME = np.array(config.HOME_JOINTS)
-ON_MARKER_1 = np.array(pen_positions)
-WHITEBOARD_CENTER = np.array(whiteboard_pose)
-ABOVE_BIN = np.array(drop_pose)
+# HOME = np.array(config.HOME_JOINTS)
+# ON_MARKER_1 = np.array(pen_positions)
+# WHITEBOARD_CENTER = np.array(whiteboard_pose)
+# ABOVE_BIN = np.array(drop_pose)
 
-HOME_ROTATION = robot.forward_kinematics(HOME)
-HOME_QUATERNION = utils._rotation_to_quaternion(HOME_ROTATION)
+# HOME_ROTATION = robot.forward_kinematics(HOME)
+# HOME_QUATERNION = utils._rotation_to_quaternion(HOME_ROTATION)
 
-AM1_QUATERNION = pass #TODO: figure out quaternion above marker 1
+# AM1_QUATERNION = pass #TODO: figure out quaternion above marker 1
 
-#HOME to above marker 1 (AM1)
-SLERP_HOME_2_AM1 = utils._slerp(HOME_QUATERNION, AM1_QUATERNION, two_seconds) 
-#above marker 1 (AM1) to on marker 1 (OM1)
-LERP_AM1_2_OM1 = utils.checkpoint_lerp(np.array([[ABOVE_MARKER_1[i], ON_MARKER_1[i]]for i in range(7)]), two_seconds)
-#on marker 1 (OM1) to above marker 1 (AM1)
-LERP_OM1_2_AM1 = utils.checkpoint_lerp(np.array([[ON_MARKER_1[i], ABOVE_MARKER_1[i]]for i in range(7)]), two_seconds)
+# #HOME to above marker 1 (AM1)
+# SLERP_HOME_2_AM1 = utils._slerp(HOME_QUATERNION, AM1_QUATERNION, two_seconds) 
+# #above marker 1 (AM1) to on marker 1 (OM1)
+# LERP_AM1_2_OM1 = utils.checkpoint_lerp(np.array([[ABOVE_MARKER_1[i], ON_MARKER_1[i]]for i in range(7)]), two_seconds)
+# #on marker 1 (OM1) to above marker 1 (AM1)
+# LERP_OM1_2_AM1 = utils.checkpoint_lerp(np.array([[ON_MARKER_1[i], ABOVE_MARKER_1[i]]for i in range(7)]), two_seconds)
 
-discritized_points_q2_q1 = utils.checkpoint_lerp(q2_q1, two_seconds)
+# discritized_points_q2_q1 = utils.checkpoint_lerp(q2_q1, two_seconds)
 
-discritized_points_q1_q3 = utils.checkpoint_lerp(q1_q3, two_seconds)
+# discritized_points_q1_q3 = utils.checkpoint_lerp(q1_q3, two_seconds)
 
 if __name__ == '__main__':
     fa = FrankaArm()
@@ -77,11 +77,27 @@ if __name__ == '__main__':
     fa.open_gripper()
 
     thetas = fa.get_joints()
-    correct_J = fa.get_jacobian()
+
+
+    correct_FK = fa.get_links_transform(thetas)[-1]
+
+    correct_J = fa.get_jacobian(thetas)
 
     my_J = robot.ef_jacobian(thetas)
 
+    my_FK = robot.forward_kinematics(thetas)[-1]
+
+    print("This is the correct FK EF frame from the robot:")
+    print(correct_FK)
+    print()
+    print("and this is ours:")
+    print(my_FK)
+    print()
+    print()
+    print("This is the correct Jacobian from the robot:")
     print(correct_J)
+    print()
+    print("and this is ours:")
     print(my_J)
 
     # old code:
