@@ -231,12 +231,22 @@ class Robot:
         R_needed = np.matmul(R_cur.T, R_target)
 
         rotation = R.from_matrix(R_needed)
+        # print(rotation)
         # axis angle representation
         
         axis_angle = rotation.as_rotvec()
+        # print(axis_angle)
         angle = np.linalg.norm(axis_angle)  # Rotation angle in radians
-        axis = axis_angle / angle if angle != 0 else [0, 0, 0]  # Normalized axis of rotation
+        # print(angle)
+        axis = axis_angle * angle if angle != 0 else [0, 0, 0]  # Normalized axis of rotation
+        # error_angle = np.matmul(R_cur, axis)
         error_angle = np.matmul(R_cur, axis)
+
+        # print(axis.T)
+        # print("error:")
+        # print(error_angle)
+        print(axis_angle)
+        print(angle)
 
         # ee_RPY = axis
         # print("RPY")
@@ -244,11 +254,13 @@ class Robot:
         # print("XYZ:")
         subtracted = cur_pose - target_pose
         ee_XYZ = subtracted[0:3, 3]
+
         # print(ee_XYZ)
+        
 
         ee_converted = np.zeros((6, 1))
         ee_converted[0:3, 0] = ee_XYZ
-        ee_converted[3:6, 0] = error_angle
+        ee_converted[3:6, 0] = axis_angle
 
         # print(ee_converted)
         # print()
@@ -306,7 +318,7 @@ class Robot:
 
         #once the norm of the computed gradient is less than the stopping condition
         #we stop optimizing
-        stopping_condition = 0.00005
+        stopping_condition = 0.005
 
         #max number of iterations
         max_iter = 1000
@@ -319,24 +331,26 @@ class Robot:
             # ee_pose = self.frame_to_pose(self.forward_kinematics(thetas)[-1])
 
             #compute the difference between current position and goal
-            # error = self.pose_error_magnitude(ee_pose, target_pose)
-            error = self.error_from_poses(self.forward_kinematics(thetas)[-1], target_pose)
+            cur_pose = self.forward_kinematics(thetas)[-1]
+            error = self.error_from_poses(cur_pose, target_pose)
             #compute the Jacobian
 
-            #NEED TO IMPLEMENT JACOBIANS
+            #Calculate JACOBIAN
             J = self.ef_jacobian(thetas)
-            # print(J)
-            # print(J.shape)
-            # compute cost gradient
-            # print(error)
-            # print(error.shape)
-            cost_gradient = np.matmul(np.transpose(J), error)
+            J_psuedo = np.linalg.pinv(J)
+
+            # Damped least-squares regularization (idk this is from chat)
+            # lambda_factor = 0.01
+            # J_damped = np.matmul(J.T, J) + lambda_factor * np.eye(J.shape[1])
+            # cost_gradient = np.matmul(np.linalg.pinv(J_damped), error)
+
+            cost_gradient = np.matmul(J_psuedo, error)
 
             # print(":D")
-            print(cost_gradient.T[0])
+            # print(cost_gradient.T[0])
             # print(cost_gradient)
             # print(cost_gradient.T[0].shape)
-            print(thetas)
+            # print(thetas)
             # print(thetas.shape)
             
             thetas -= (step_size * cost_gradient.T[0])
@@ -349,8 +363,8 @@ class Robot:
             # print("********************************************************************")
 
             if np.linalg.norm(cost_gradient) < stopping_condition:
-                # print("FINISHED YAY")
-                # print(num_iter)
+                print("FINISHED YAY")
+                print(num_iter)
                 return thetas
             num_iter+=1
         
