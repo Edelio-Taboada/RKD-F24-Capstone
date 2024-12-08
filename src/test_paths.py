@@ -37,7 +37,7 @@ def discretize_vector_path(vector_path, resolution=100):
         elif cmd == "curveTo":
             if len(args) == 3:
                 control1, control2, target_pos = args
-                print(args)
+                # print(args)
                 t = np.linspace(0, 1, resolution) # <<<<<<<<<<<<<<<<<<<<<<<<< CHANGE THIS TO MAKE IT NON LINEAR
                 x_vals = (
                     (1 - t) ** 3 * current_pos[0]
@@ -51,9 +51,9 @@ def discretize_vector_path(vector_path, resolution=100):
                     + 3 * (1 - t) * t ** 2 * control2[1]
                     + t ** 3 * target_pos[1]
                 )
-                # control1, control2, target_pos = args
-                # # Create cubic splines for the x and y coordinates
-                # t = np.linspace(0, 1, resolution)
+                control1, control2, target_pos = args
+                # Create cubic splines for the x and y coordinates
+                t = np.linspace(0, 1, resolution)
                 
                 # # Fit cubic splines for x and y
                 # spline_x = CubicSpline([0, 0.5, 1], [current_pos[0], control1[0], control2[0], target_pos[0]])
@@ -70,7 +70,7 @@ def discretize_vector_path(vector_path, resolution=100):
                 raise ValueError(f"Unexpected number of arguments for 'curveTo': {args}")
         elif cmd == "closePath":
             pass  # No additional points are needed for closePath
-
+    print("\nLETTER PATH:   ",points)
     return points
 
 def plot_glyph_points(points):

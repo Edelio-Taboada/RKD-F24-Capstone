@@ -29,8 +29,6 @@ args.foo = 2
 args.bar = 3
 '''
 
-# Call the program with passed arguments
-
 MAX_ACCELERATIONS = [15, 7.5, 10, 12.5, 15, 20, 20]
 SAFE_MAX_ACCELERATIONS = [15, 7.5, 10, 12.5, 15, 20, 20]
 
@@ -41,17 +39,24 @@ ten_seconds = np.array([[0, 10]])
 #calibration: post-checkpoint
 robot = Robot()
 
-# calibrator = WorkspaceCalibrator()
-# pen_positions = calibrator.calibrate_pen_holders()
-# whiteboard_pose = calibrator.calibrate_whiteboard()
-# drop_pose = calibrator.calibrate_drop_location()
+calibrator = WorkspaceCalibrator()
 
-# config = RobotConfig()
+pen_grab_pose = calibrator.calibrate_pen_holders()
+ee_at_pen1 = robot.forward_kinematics(pen_grab_pose)
+ee_at_pen2 = ee_at_pen1 + something
+ee_at_pen3 = ee_at_pen2 + something
 
-# HOME = np.array(config.HOME_JOINTS)
-# ON_MARKER_1 = np.array(pen_positions)
-# WHITEBOARD_CENTER = np.array(whiteboard_pose)
-# ABOVE_BIN = np.array(drop_pose)
+whiteboard_pose, whiteboard_T = calibrator.calibrate_whiteboard()
+
+
+drop_pose = calibrator.calibrate_drop_location()
+
+config = RobotConfig()
+
+HOME = np.array(config.HOME_JOINTS)
+ON_MARKER_1 = np.array(pen_grab_pose)
+WHITEBOARD_CENTER = np.array(whiteboard_pose)
+ABOVE_BIN = np.array(drop_pose)
 
 # HOME_ROTATION = robot.forward_kinematics(HOME)
 # HOME_QUATERNION = utils._rotation_to_quaternion(HOME_ROTATION)

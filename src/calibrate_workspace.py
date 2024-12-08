@@ -48,7 +48,7 @@ class WorkspaceCalibrator:
         v1 = p2 - p1
         v2 = p3 - p1
         normal = np.cross(v1, v2)
-        normal = normal / np.linalg.norm(normal)
+        normal = normal / np.linalg.norm(normal) #orientation of the ee should align with this normal
         
         # Create whiteboard frame
         rotation = self._compute_orientation_matrix(normal)
@@ -57,8 +57,8 @@ class WorkspaceCalibrator:
         T[:3, 3] = p1
         print(f"Recorded whiteboard at: {T}")
         np.save("whiteboard_pose.npy", T)
-        
-        return current_pose
+
+        return current_pose, T
     
     def calibrate_drop_location(self):
         """Calibrate pen drop location"""
