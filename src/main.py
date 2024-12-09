@@ -15,6 +15,9 @@ from robot import Robot
 from robot_config import RobotConfig
 from task_config import TaskConfig
 from frankapy import FrankaArm
+import utils
+
+import paths
 
 import time
 
@@ -122,6 +125,44 @@ tg = TrajectoryGenerator()
 tf = TrajectoryFollower()
 max_vel = RobotConfig.MAX_VELOCITY
 max_acc = RobotConfig.MAX_ACCELERATION
+
+# whiteboard_pose is not multiplyable
+whiteboard_center_ee = np.eye(4)
+whiteboard_center_ee[:3,:3] = whiteboard_pose.rotation
+whiteboard_center_ee[:3,3] = whiteboard_pose.translation
+whiteboard_center_joints = Robot._inverse_kinematics(whiteboard_center_ee,home_joints)
+whiteboard_center_quat = utils._rotation_to_quaternion(whiteboard_center_ee[:3,:3])
+
+
+# step 1 make discritized points path ***************
+
+otf_path = "./fonts/Branchery.otf"
+# otf_path = "./fonts/Milanello.otf"
+glyph_data = paths.extract_glyph_paths(otf_path)
+
+letter = "A"
+vector_path = glyph_data.get(letter)
+if vector_path:
+    discretized_points = paths.discretize_vector_path(vector_path, resolution=100)
+    # plot_glyph_points(discretized_points)
+else:
+    print(f"No vector path found for letter '{letter}'.")
+
+# step 2 convert to whiteboard path *****************
+
+# for each point, we need to 
+# make sure that it's in a 4x1 matrix
+# renormalize
+wb_R = whiteboard_pose.rotation
+wb_T = whiteboard_pose.translation
+wb_translation = np.array([0.005, 0.005, 0, 0]).T
+
+
+wb_translated_ee = np.eye(4)
+wb_translated_ee[:4,3] = whiteboard_pose @ wb_translation
+wb_translated_ee[:3,:3] = wb_R
+
+# step 
 
 fa.reset_joints()
 fa.open_gripper()
