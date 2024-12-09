@@ -161,6 +161,7 @@ current_joint = am1_to_home[-1]
 draw_R = whiteboard_R #rotation of the whiteboard plane
 
 # Draw line with pen 1
+'''
 home_to_above_au1 = tg.generate_straight_line(home_xyz, au_1-(0.05*whiteboard_pose[:3,2]), current_joint, pen_R, draw_R, duration=4)
 tf.follow_joint_trajectory(home_to_above_au1)
 time.sleep(0.3)
@@ -225,7 +226,9 @@ current_joint = au8_to_au9[-1]
 au9_to_above_board = tg.generate_straight_line(au_9, point_above_whiteboard_xyz, current_joint, draw_R, duration=1)
 tf.follow_joint_trajectory(au9_to_above_board)
 time.sleep(0.3)
-current_joint = au9_to_above_board[-1]
+
+'''
+current_joint = fa.get_joints()
 
 # whiteboard --> home
 above_board_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, 3)
