@@ -47,10 +47,10 @@ fa = FrankaArm()
 calibrator = WorkspaceCalibrator()
 
 pen_grab_pose = calibrator.calibrate_pen_holders()
-ee_at_pen1 = np.eye((4,4))
-ee_at_pen1[:3,:3] = pen_grab_pose.rotation
-ee_at_pen1[:3,3] = pen_grab_pose.translation
-ee_at_pen2 = ee_at_pen1 + np.array([[0,0,0,PEN_OFFSET],
+on_marker_1_ee = np.eye(4)
+on_marker_1_ee[:3,:3] = pen_grab_pose.rotation
+on_marker_1_ee[:3,3] = pen_grab_pose.translation
+ee_at_pen2 = on_marker_1_ee + np.array([[0,0,0,PEN_OFFSET],
                                     [0,0,0,0],
                                     [0,0,0,0],
                                     [0,0,0,0]])
@@ -60,44 +60,49 @@ ee_at_pen3 = ee_at_pen2 + np.array([[0,0,0,PEN_OFFSET],
                                     [0,0,0,0]])
 
 whiteboard_pose = calibrator.calibrate_whiteboard()
-whiteboard_quaternion = whiteboard_pose.quaternion
+whiteboard_quat = whiteboard_pose.quaternion
 
 drop_pose = calibrator.calibrate_drop_location()
 
 config = RobotConfig()
 
 home_joints = np.array(config.HOME_JOINTS)
-on_marker_1_joints = robot._inverse_kinematics(ee_at_pen1,home_joints)
+home_quat = utils._rotation_to_quaternion(robot.forward_kinematics(home_joints)[:3,:3])
 
-whiteboard_center_ee = np.eye((4,4))
+above_marker_1_ee = robot.forward_kinematics(on_marker_1_ee) + np.array([[0,0,0,0],
+                                                                         [0,0,0,0],
+                                                                         [0,0,0,config.PEN_LENGTH],
+                                                                         [0,0,0,0]])
+above_marker_1_joints = robot._inverse_kinematics(above_marker_1_ee, home_joints)
+above_marker_1_quat = utils._rotation_to_quaternion(above_marker_1_ee[:3,:3])
+
+on_marker_1_joints = robot._inverse_kinematics(on_marker_1_ee,home_joints)
+
+whiteboard_center_ee = np.eye(4)
 whiteboard_center_ee[:3,:3] = whiteboard_pose.rotation
 whiteboard_center_ee[:3,3] = whiteboard_pose.translation
 whiteboard_center_joints = robot._inverse_kinematics(whiteboard_center_ee,home_joints)
+whiteboard_center_quat = utils._rotation_to_quaternion(whiteboard_center_ee[:3,:3])
 
-above_bin_ee = np.eye((4,4))
+above_bin_ee = np.eye(4)
 above_bin_ee[:3,:3] = drop_pose.rotation
 above_bin_ee[:3,3] = drop_pose.translation
 above_bin_joints = robot._inverse_kinematics(above_bin_ee,home_joints)
+above_bin_quat = utils._rotation_to_quaternion(above_bin_ee[:3,:3])
 
 
 '''----------------define paths between poses------------------'''
 ###############  DRAW WITH MARKER 1  ##############################
 # home --> above marker 1 --> on marker 1 --> close gripper
-above_marker_1_ee = robot.forward_kinematics(ee_at_pen1) - np.array([[0,0,0,0],
-                                                                     [0,0,0,0],
-                                                                     [0,0,0,config.PEN_LENGTH],
-                                                                     [0,0,0,0]])
-above_marker_1_joints = robot._inverse_kinematics(above_marker_1_ee, on_marker_1_joints)
-
-home_to_am1 = utils.checkpoint_lerp(np.array([[home_joints[i], above_marker_1_joints[i]]for i in range(7)]), two_seconds)
-am1_to_om1 = utils.checkpoint_lerp(np.array([[above_marker_1_joints[i], on_marker_1_joints[i]]for i in range(7)]), two_seconds)
+home_to_am1 = utils._slerp(home_quat, above_marker_1_quat, five_seconds)
+am1_to_om1 = utils.checkpoint_lerp(np.array([[above_marker_1_joints[i], on_marker_1_joints[i]]for i in range(7)]), five_seconds)
 
 # on marker 1 --> above marker 1 --> home
-om1_to_am1 = utils.checkpoint_lerp(np.array([[on_marker_1_joints[i], above_marker_1_joints[i]]for i in range(7)]), two_seconds)
-am1_to_home = utils.checkpoint_lerp(np.array([[above_marker_1_joints[i], home_joints[i]]for i in range(7)]), two_seconds)
+om1_to_am1 = utils.checkpoint_lerp(np.array([[on_marker_1_joints[i], above_marker_1_joints[i]]for i in range(7)]), five_seconds)
+am1_to_home = utils._slerp(above_marker_1_quat, home_quat, five_seconds)
 
 # home --> whiteboard center --> draw path --> home
-home_to_wbc = utils.checkpoint_lerp(np.array([[home_joints[i], whiteboard_center_joints[i]]for i in range(7)]), two_seconds)
+home_to_wbc = utils._slerp(home_quat, whiteboard_center_quat, five_seconds)
 
 
 # otf_path = "./fonts/Milanello.otf"
@@ -118,22 +123,22 @@ home_to_wbc = utils.checkpoint_lerp(np.array([[home_joints[i], whiteboard_center
 # wb_end_pose = drawing_trajectory[-1,:]
 wb_R = whiteboard_pose[:3,:3]
 wb_T = whiteboard_pose[:3,3]
-wb_translation = np.array([0.05, 0.05, 0]).T
+wb_translation = np.array([0.05, 0.05, 0, 0])
 
 
-wb_translated_ee = np.eye((4,4))
-wb_translated_ee[:3,3] = whiteboard_pose @ wb_translation
+wb_translated_ee = np.eye(4)
+wb_translated_ee[:4,3] = whiteboard_pose @ wb_translation
 wb_translated_ee[:3,:3] = wb_R
 
 wb_end_joints = robot._inverse_kinematics(wb_translated_ee,whiteboard_center_joints)
 
-wb_draw = utils.checkpoint_lerp(np.array([[whiteboard_center_joints[i], wb_end_joints[i]]for i in range(7)]), two_seconds)
+wb_draw = utils.checkpoint_lerp(np.array([[whiteboard_center_joints[i], wb_end_joints[i]]for i in range(7)]), five_seconds)
 
-wb_to_home = utils.checkpoint_lerp(np.array([[wb_end_joints[i], home_joints[i]]for i in range(7)]), two_seconds)
+wb_to_home = utils.checkpoint_lerp(np.array([[wb_end_joints[i], home_joints[i]]for i in range(7)]), five_seconds)
 
 # home --> above bin --> open gripper --> home
-home_to_ab = utils.checkpoint_lerp(np.array([[home_joints[i], above_bin_joints[i]]for i in range(7)]), two_seconds)
-ab_to_home = utils.checkpoint_lerp(np.array([[above_bin_joints[i], home_joints[i]]for i in range(7)]), two_seconds)
+home_to_ab = utils._slerp(home_quat, above_bin_quat, five_seconds)
+ab_to_home = utils.checkpoint_lerp(above_bin_quat, home_quat, five_seconds)
 
 
 ###############  DRAW WITH MARKER 2  ##############################
@@ -199,35 +204,35 @@ if __name__ == '__main__':
 
     # home --> above marker 1
     tf.follow_joint_trajectory(home_to_am1.T)
-    time.sleep(2)
+    time.sleep(5)
     # above marker 1 --> on marker 1
     tf.follow_joint_trajectory(am1_to_om1.T)
-    time.sleep(2)
+    time.sleep(5)
     # grab marker
     fa.close_gripper()
     # on marker 1 --> above marker 1
     tf.follow_joint_trajectory(om1_to_am1.T)
-    time.sleep(2)
+    time.sleep(5)
     # above marker 1 --> home
     tf.follow_joint_trajectory(am1_to_home.T)
-    time.sleep(2)
+    time.sleep(5)
     # home --> whiteboard center
     tf.follow_joint_trajectory(home_to_wbc.T)
-    time.sleep(2)
+    time.sleep(5)
     # draw on the whiteboard
     tf.follow_joint_trajectory(wb_draw.T)
     time.sleep(10)
     # whiteboard --> home
-    tf.follow_joint_trajectory(wb_to_home)
-    time.sleep(2)
+    tf.follow_joint_trajectory(wb_to_home.T)
+    time.sleep(5)
     # home --> above bin
-    tf.follow_joint_trajectory(home_to_ab)
-    time.sleep(2)
+    tf.follow_joint_trajectory(home_to_ab.T)
+    time.sleep(5)
     # drop marker in bin
     fa.open_gripper()
     # above bin --> home
-    tf.follow_joint_trajectory(ab_to_home)
-    time.sleep(2)
+    tf.follow_joint_trajectory(ab_to_home.T)
+    time.sleep(5)
 
 
 
