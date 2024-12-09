@@ -199,18 +199,18 @@ def rotation_matrix_to_euler_angles(R):
     return roll, pitch, yaw
 
 
-def whiteboard_2d_to_3d(self, letter_path_xy_points, WHITEBOARD_CENTER, WHITEBOARD_T):
+# def whiteboard_2d_to_3d(self, letter_path_xy_points, WHITEBOARD_CENTER, WHITEBOARD_T):
 
-    #WHITEBOARD_CENTER is the joint angles to have the ee at calibrated whiteboard center
-    ee_at_whiteboard_center = self._forward_kinematics(WHITEBOARD_CENTER)
+#     #WHITEBOARD_CENTER is the joint angles to have the ee at calibrated whiteboard center
+#     ee_at_whiteboard_center = self._forward_kinematics(WHITEBOARD_CENTER)
 
-    for ((x,y),down) in letter_path_xy_points:
-        translation_2d = np.array([[0,0,0,x],
-                                   [0,0,0,y],
-                                   [0,0,0,0],
-                                   [0,0,0,1]])
-        ee_at_point_2d = ee_at_whiteboard_center + translation_2d
-        ee_at_point_3d = WHITEBOARD_T + ee_at_point_2d
+#     for ((x,y),down) in letter_path_xy_points:
+#         translation_2d = np.array([[0,0,0,x],
+#                                    [0,0,0,y],
+#                                    [0,0,0,0],
+#                                    [0,0,0,1]])
+#         ee_at_point_2d = ee_at_whiteboard_center + translation_2d
+#         ee_at_point_3d = WHITEBOARD_T + ee_at_point_2d
     
-    return ee_at_point_3d
+#     return ee_at_point_3d
 

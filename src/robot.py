@@ -3,6 +3,7 @@ sys.path.append('../config')
 import numpy as np
 import utils
 from scipy.spatial.transform import Rotation as R
+import copy, math
 # from frankapy import FrankaArm
 # from robot_config import RobotConfig
 # from task_config import TaskConfig
@@ -13,17 +14,18 @@ class Robot:
         """Initialize motion planner with robot controller"""
         # frames are from calibrate_workspace
         self.dof = 7
-        self.marker_len = 0.1034
+        self.marker_len = 0
+        self.gripping_marker = False
 
         self.DH_PARAMS_NO_THETAS = np.array([
-            [0,         0,          1/3],
+            [0,         0,          0.333],
             [0,         -np.pi/2,   0],
             [0,         np.pi/2,    0.316],
             [0.0825,    np.pi/2,    0],
             [-0.0825,   -np.pi/2,   0.384],
             [0,         np.pi/2,    0],
             [0.088,     np.pi/2,    0],
-            [0,         0,          0.107],
+            [0,         0,          0.107+0.1034],
             [0,         0,          self.marker_len]
         ])
 
@@ -38,6 +40,9 @@ class Robot:
 
     def change_marker_len(self, new_len):
         self.marker_len = new_len
+
+    def gripping_marker(self,gripping):
+        self.gripping_marker = gripping
 
     def dh_frame_from_vals(self, alpha, a, d, theta):
         
@@ -72,10 +77,10 @@ class Robot:
 
             frames[joint] = self.dh_frame_from_vals(alpha, a, d, theta)
         
-        theta = -np.pi/4
+        theta = 0-np.pi/4 * self.gripping_marker
         a = 0
         alpha = 0
-        d = 0.107 + self.marker_len
+        d = 0.107 + 0.1034 + self.marker_len * self.gripping_marker
 
         frames[self.dof] = self.dh_frame_from_vals(alpha, a, d, theta)
 
@@ -127,7 +132,7 @@ class Robot:
         # print("MY DH FRAMES")
         # print(dh_frames)
 
-        all_frames = np.zeros((self.dof + 1, 4, 4))
+        all_frames = np.zeros((self.dof + 2, 4, 4))
 
         all_frames[0, :, :] = np.array([
             [1, 0, 0, 0],
@@ -136,15 +141,9 @@ class Robot:
             [0, 0, 0, 1]
         ])
 
-        for joint in range(1, self.dof + 1):
+        for joint in range(1, self.dof + 2):
             all_frames[joint, :, :] = np.matmul(all_frames[joint-1, :, :], dh_frames[joint-1])
-            if (joint == self.dof) :
-                # print("bing bong")
-                # print(dh_frames[joint])
-                # print(dh_frames[joint+1])
-                all_frames[joint, :, :] = np.matmul(all_frames[joint, :, :], dh_frames[joint])
-                all_frames[joint, :, :] = np.matmul(all_frames[joint, :, :], dh_frames[joint+1])
-        
+           
         return all_frames
         # --------------- END STUDENT SECTION --------------------------------------------------
 
@@ -188,7 +187,7 @@ class Robot:
         fk_frames = self.forward_kinematics(thetas)
 
         # last frame, first three rows, last column
-        O_6 = fk_frames[-1, 0:3, -1]
+        O_6 = fk_frames[8, 0:3, -1]
         # print(O_6)
 
         # print(O_6)
@@ -237,33 +236,8 @@ class Robot:
             R_error[1, 0] - R_error[0, 1]    # Angular error around z-axis
         ])
 
-        # rotation = R.from_matrix(R_needed)
-        # # print(rotation)
-        # # axis angle representation
-        
-        # axis_angle = rotation.as_rotvec()
-        # # print(axis_angle)
-        # angle = np.linalg.norm(axis_angle)  # Rotation angle in radians
-        # # print(angle)
-        # axis = axis_angle * angle if angle != 0 else [0, 0, 0]  # Normalized axis of rotation
-        # # error_angle = np.matmul(R_cur, axis)
-        # error_angle = np.matmul(R_cur, axis)
-
-        # print(axis.T)
-        # print("error:")
-        # print(error_angle)
-        # print(axis_angle)
-        # print(angle)
-
-        # ee_RPY = axis
-        # print("RPY")
-        # print(ee_RPY)
-        # print("XYZ:")
-        subtracted = cur_pose - target_pose
+        subtracted = target_pose - cur_pose
         ee_XYZ = subtracted[0:3, 3]
-
-        # print(ee_XYZ)
-        
 
         ee_converted = np.zeros((6, 1))
         ee_converted[0:3, 0] = ee_XYZ
@@ -318,7 +292,7 @@ class Robot:
         print()
         print()
 
-        thetas = seed_joints
+        thetas = seed_joints.copy()
 
         #step size for gradient descent (arbitrary)
         step_size = 0.1
@@ -328,7 +302,7 @@ class Robot:
         stopping_condition = 0.00005
 
         #max number of iterations
-        max_iter = 1000
+        max_iter = 10000
         num_iter = 0
 
         while num_iter < max_iter:
@@ -344,7 +318,7 @@ class Robot:
 
             #Calculate JACOBIAN
             J = self.ef_jacobian(thetas)
-            J_psuedo = np.linalg.pinv(J)
+            J_psuedo = np.linalg.pinv(J) #TODO: check that left vs right pseudoinv is covered here
 
             # Damped least-squares regularization (idk this is from chat)
             # lambda_factor = 0.01
@@ -360,7 +334,7 @@ class Robot:
             # print(thetas)
             # print(thetas.shape)
             
-            thetas -= (step_size * cost_gradient.T[0])
+            thetas += (step_size * cost_gradient.T[0])
 
             # print("********************************************************************")
             # print("********************************************************************")

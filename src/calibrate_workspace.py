@@ -58,7 +58,7 @@ class WorkspaceCalibrator:
         print(f"Recorded whiteboard at: {T}")
         np.save("whiteboard_pose.npy", T)
 
-        return current_pose, T
+        return current_pose
     
     def calibrate_drop_location(self):
         """Calibrate pen drop location"""
