@@ -18,6 +18,7 @@ from frankapy import FrankaArm
 
 import time
 
+'''
 # Define default values
 parser = argparse.ArgumentParser()
 parser.add_argument('--foo', default=1, type=float, help='foo')
@@ -31,36 +32,38 @@ else:
 # Modify the container, add arguments, change values, etc.
 args.foo = 2
 args.bar = 3
+'''
 
 # Call the program with passed arguments
 fa = FrankaArm()
 kinematics = Robot()
 calibrator = WorkspaceCalibrator()
 
-home_pose_q = RobotConfig.HOME_JOINTS
-home_xyz = kinematics.forward_kinematics(home_pose_q)[:3,3,-1]
-pen_R = kinematics.forward_kinematics(home_pose_q)[:3,:3,-1]
+home_joints = RobotConfig.HOME_JOINTS
+home_xyz = kinematics.forward_kinematics(home_joints)[:3,3,-1]
+pen_R = kinematics.forward_kinematics(home_joints)[:3,:3,-1]
 
 fa.reset_joints()
 fa.open_gripper()
 
-pen_seperation = 0.058
-vertical_seperation = 0.15
+pen_offset = 0.058
+above_pen = 0.15
 
 calibrator.calibrate_pen_holders()
+
 pen_1_xyz = np.load('pen_holder_pose.npy',allow_pickle=True)
-pen_2_xyz = pen_1_xyz + np.array([pen_seperation,0,0])
-pen_3_xyz = pen_1_xyz - np.array([pen_seperation,0,0])
-pen_4_xyz = pen_1_xyz + np.array([pen_seperation/2.0,0,0])
-pen_5_xyz = pen_1_xyz - np.array([pen_seperation/2.0,0,0])
+pen_2_xyz = pen_1_xyz + np.array([pen_offset,0,0])
+pen_3_xyz = pen_1_xyz - np.array([pen_offset,0,0])
+pen_4_xyz = pen_1_xyz + np.array([pen_offset/2.0,0,0])
+pen_5_xyz = pen_1_xyz - np.array([pen_offset/2.0,0,0])
 pen_6_xyz = pen_1_xyz + np.array([0,0.035,0])
 
-pen_1_above_xyz = pen_1_xyz + np.array([0,0,vertical_seperation])
-pen_2_above_xyz = pen_2_xyz + np.array([0,0,vertical_seperation])
-pen_3_above_xyz = pen_3_xyz + np.array([0,0,vertical_seperation])
-pen_4_above_xyz = pen_4_xyz + np.array([0,0,vertical_seperation])
-pen_5_above_xyz = pen_5_xyz + np.array([0,0,vertical_seperation])
-pen_6_above_xyz = pen_6_xyz + np.array([0,0,vertical_seperation])
+pen_1_above_xyz = pen_1_xyz + np.array([0,0,above_pen])
+pen_2_above_xyz = pen_2_xyz + np.array([0,0,above_pen])
+pen_3_above_xyz = pen_3_xyz + np.array([0,0,above_pen])
+pen_4_above_xyz = pen_4_xyz + np.array([0,0,above_pen])
+pen_5_above_xyz = pen_5_xyz + np.array([0,0,above_pen])
+pen_6_above_xyz = pen_6_xyz + np.array([0,0,above_pen])
 
 pre_pick_ready_q = np.array([0.3874, -0.0308, 0.2433, -2.0961, 0.027, 2.0726, 1.3682])
 pre_pick_ready_pose = kinematics.forward_kinematics(pre_pick_ready_q)[:,:,-1]
@@ -82,6 +85,8 @@ whiteboard_POI_2 = whiteboard_pose[:3,-1] - (0.12*whiteboard_pose[:3,0]) # Creat
 whiteboard_POI_3 = whiteboard_pose[:3,-1] + (0.05*whiteboard_pose[:3,1]) # Creates a new point 5cm up from the center of the board
 whiteboard_POI_4 = whiteboard_pose[:3,-1] - (0.05*whiteboard_pose[:3,1]) # Creates a new point 5cm down from the center of the board
 
+
+# list of common start and end points for the drawing: to be interpolated between
 au_1 = whiteboard_xyz + (0.05*whiteboard_pose[:3,0]) + (0.05*whiteboard_pose[:3,1])
 au_2 = whiteboard_xyz + (0.05*whiteboard_pose[:3,0]) + (-0.05*whiteboard_pose[:3,1])
 au_3 = whiteboard_xyz + (0.015*whiteboard_pose[:3,0]) + (0.06*whiteboard_pose[:3,1])
@@ -121,31 +126,39 @@ max_acc = RobotConfig.MAX_ACCELERATION
 fa.reset_joints()
 fa.open_gripper()
 
-# Pick up pen 1
-current_joint = np.array(home_pose_q)
-home_to_pre_pick_1 = tg.generate_straight_line(home_xyz, pen_1_above_xyz, current_joint, pen_R, duration=3)
-tf.follow_joint_trajectory(home_to_pre_pick_1)
-time.sleep(0.3)
-current_joint = home_to_pre_pick_1[-1]
+'''--------------------------------draw with marker 1-----------------------------'''
 
-pre_pick_1_to_pick_1 = tg.generate_straight_line(pen_1_above_xyz, pen_1_xyz, current_joint, pen_R, duration=1.5)
-tf.follow_joint_trajectory(pre_pick_1_to_pick_1)
+# home --> above marker 1 (am1)
+current_joint = np.array(home_joints)
+home_to_am1 = tg.generate_straight_line(home_xyz, pen_1_above_xyz, current_joint, pen_R, duration=3)
+tf.follow_joint_trajectory(home_to_am1)
 time.sleep(0.3)
+# current_joint = home_to_am1[-1]
+current_joint = fa.get_joints() #TODO: check if this works
+
+# above marker 1 (am1) --> on marker 1 (om1)
+am1_to_om1 = tg.generate_straight_line(pen_1_above_xyz, pen_1_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(am1_to_om1)
+time.sleep(0.3)
+
+# grab marker
 fa.close_gripper()
 time.sleep(0.3)
-current_joint = pre_pick_1_to_pick_1[-1]
+current_joint = am1_to_om1[-1]
 
-pick_1_to_pre_pick_1 = tg.generate_straight_line(pen_1_xyz, pen_1_above_xyz, current_joint, pen_R, duration=1.5)
-tf.follow_joint_trajectory(pick_1_to_pre_pick_1)
+# on marker 1 (om1) --> above marker 1 (am1)
+om1_to_am1 = tg.generate_straight_line(pen_1_xyz, pen_1_above_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(om1_to_am1)
 time.sleep(0.3)
-current_joint = pick_1_to_pre_pick_1[-1]
+current_joint = om1_to_am1[-1]
 
-pre_pick_1_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
-tf.follow_joint_trajectory(pre_pick_1_to_home)
+# above marker 1 (am1) --> home
+am1_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, duration=3)
+tf.follow_joint_trajectory(am1_to_home)
 time.sleep(0.3)
-current_joint = pre_pick_1_to_home[-1]
+current_joint = am1_to_home[-1]
 
-draw_R = whiteboard_R
+draw_R = whiteboard_R #rotation of the whiteboard plane
 
 # Draw line with pen 1
 home_to_above_au1 = tg.generate_straight_line(home_xyz, au_1-(0.05*whiteboard_pose[:3,2]), current_joint, pen_R, draw_R, duration=4)
@@ -214,71 +227,88 @@ tf.follow_joint_trajectory(au9_to_above_board)
 time.sleep(0.3)
 current_joint = au9_to_above_board[-1]
 
-# Drop pen 1
-above_board_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 3)
+# whiteboard --> home
+above_board_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, 3)
 tf.follow_joint_trajectory(above_board_to_home)
 time.sleep(0.3)
 current_joint = above_board_to_home[-1]
 
+
 decision = input(f"Type yes to put back to pen holder, type anything else to put into drop bin: ")
 if decision == "yes":
-    current_joint = np.array(home_pose_q)
-    home_to_pre_pick_4 = tg.generate_straight_line(home_xyz, pen_4_above_xyz, current_joint, pen_R, duration=3)
-    tf.follow_joint_trajectory(home_to_pre_pick_4)
+    current_joint = np.array(home_joints)
+    home_to_am4 = tg.generate_straight_line(home_xyz, pen_4_above_xyz, current_joint, pen_R, duration=3)
+    tf.follow_joint_trajectory(home_to_am4)
     time.sleep(0.3)
-    current_joint = home_to_pre_pick_4[-1]
+    current_joint = home_to_am4[-1]
 
-    pre_pick_4_to_pick_4 = tg.generate_straight_line(pen_4_above_xyz, pen_4_xyz, current_joint, pen_R, duration=2)
-    tf.follow_joint_trajectory(pre_pick_4_to_pick_4)
+    # above marker 4 --> on marker 4
+    am4_to_om4 = tg.generate_straight_line(pen_4_above_xyz, pen_4_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(am4_to_om4)
     time.sleep(0.3)
+
+    # drop marker
     fa.open_gripper()
     time.sleep(0.3)
-    current_joint = pre_pick_4_to_pick_4[-1]
+    current_joint = am4_to_om4[-1]
 
-    pick_4_to_pre_pick_4 = tg.generate_straight_line(pen_4_xyz, pen_4_above_xyz, current_joint, pen_R, duration=2)
-    tf.follow_joint_trajectory(pick_4_to_pre_pick_4)
+    # on marker 4 --> above marker 4
+    om4_to_am4 = tg.generate_straight_line(pen_4_xyz, pen_4_above_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(om4_to_am4)
     time.sleep(0.3)
-    current_joint = pick_4_to_pre_pick_4[-1]
+    current_joint = om4_to_am4[-1]
 
-    pre_pick_4_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
-    tf.follow_joint_trajectory(pre_pick_4_to_home)
+    # above marker 4 --> home
+    am4_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, duration=3)
+    tf.follow_joint_trajectory(am4_to_home)
     time.sleep(0.3)
-    current_joint = pre_pick_4_to_home[-1]
+    current_joint = am4_to_home[-1]
 
 else:
+    # home --> drop position
     home_to_drop = tg.generate_straight_line(home_xyz, drop_xyz, current_joint, pen_R, drop_R, duration=4)
     tf.follow_joint_trajectory(home_to_drop)
     time.sleep(0.3)
     current_joint = home_to_drop[-1]
+
+    # drop the marker
     fa.open_gripper()
 
-    drop_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 4)
+    # drop position --> home
+    drop_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, 4)
     tf.follow_joint_trajectory(drop_to_home)
     time.sleep(0.3)
 
-# Pick up pen 2
-current_joint = np.array(home_pose_q)
-home_to_pre_pick_2 = tg.generate_straight_line(home_xyz, pen_2_above_xyz, current_joint, pen_R, duration=3)
-tf.follow_joint_trajectory(home_to_pre_pick_2)
-time.sleep(0.3)
-current_joint = home_to_pre_pick_2[-1]
+'''---------------------------------draw with marker 2-----------------------------------'''
 
-pre_pick_2_to_pick_2 = tg.generate_straight_line(pen_2_above_xyz, pen_2_xyz, current_joint, pen_R, duration=1.5)
-tf.follow_joint_trajectory(pre_pick_2_to_pick_2)
+# home --> above marker 2
+current_joint = np.array(home_joints)
+home_to_am2 = tg.generate_straight_line(home_xyz, pen_2_above_xyz, current_joint, pen_R, duration=3)
+tf.follow_joint_trajectory(home_to_am2)
 time.sleep(0.3)
+current_joint = home_to_am2[-1]
+
+# above marker 2 --> on marker 2
+am2_to_om2 = tg.generate_straight_line(pen_2_above_xyz, pen_2_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(am2_to_om2)
+time.sleep(0.3)
+
+# grab marker 2
 fa.close_gripper()
 time.sleep(0.3)
-current_joint = pre_pick_2_to_pick_2[-1]
+current_joint = am2_to_om2[-1]
 
-pick_2_to_pre_pick_2 = tg.generate_straight_line(pen_2_xyz, pen_2_above_xyz, current_joint, pen_R, duration=1.5)
-tf.follow_joint_trajectory(pick_2_to_pre_pick_2)
+# on marker 2 --> above marker 2
+om2_to_am2 = tg.generate_straight_line(pen_2_xyz, pen_2_above_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(om2_to_am2)
 time.sleep(0.3)
-current_joint = pick_2_to_pre_pick_2[-1]
+current_joint = om2_to_am2[-1]
 
-pre_pick_2_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
-tf.follow_joint_trajectory(pre_pick_2_to_home)
+# above marker 2 --> home
+am2_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, duration=3)
+tf.follow_joint_trajectory(am2_to_home)
 time.sleep(0.3)
-current_joint = pre_pick_2_to_home[-1]
+current_joint = am2_to_home[-1]
 
 # Draw with pen 2
 home_to_above_au1 = tg.generate_straight_line(home_xyz, au_1-(0.05*whiteboard_pose[:3,2]), current_joint, pen_R, draw_R, duration=4)
@@ -379,71 +409,88 @@ tf.follow_joint_trajectory(au16_to_above_center)
 time.sleep(0.3)
 current_joint = au16_to_above_center[-1]
 
-# Drop pen 2
-above_board_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 3)
+# whiteboard --> home
+above_board_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, 3)
 tf.follow_joint_trajectory(above_board_to_home)
 time.sleep(0.3)
 current_joint = above_board_to_home[-1]
 
+# drop or return pen 2
 decision = input(f"Type yes to put back to pen holder, type anything else to put into drop bin: ")
 if decision == "yes":
-    current_joint = np.array(home_pose_q)
-    home_to_pre_pick_5 = tg.generate_straight_line(home_xyz, pen_5_above_xyz, current_joint, pen_R, duration=3)
-    tf.follow_joint_trajectory(home_to_pre_pick_5)
+    # home --> above marker 5
+    current_joint = np.array(home_joints)
+    home_to_am5 = tg.generate_straight_line(home_xyz, pen_5_above_xyz, current_joint, pen_R, duration=3)
+    tf.follow_joint_trajectory(home_to_am5)
     time.sleep(0.3)
-    current_joint = home_to_pre_pick_5[-1]
+    current_joint = home_to_am5[-1]
 
-    pre_pick_5_to_pick_5 = tg.generate_straight_line(pen_5_above_xyz, pen_5_xyz, current_joint, pen_R, duration=2)
-    tf.follow_joint_trajectory(pre_pick_5_to_pick_5)
+    # above marker 5 --> on marker 5
+    am5_to_om5 = tg.generate_straight_line(pen_5_above_xyz, pen_5_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(am5_to_om5)
     time.sleep(0.3)
+
+    # drop marker 2 into slot 5
     fa.open_gripper()
     time.sleep(0.3)
-    current_joint = pre_pick_5_to_pick_5[-1]
+    current_joint = am5_to_om5[-1]
 
-    pick_5_to_pre_pick_5 = tg.generate_straight_line(pen_5_xyz, pen_5_above_xyz, current_joint, pen_R, duration=2)
-    tf.follow_joint_trajectory(pick_5_to_pre_pick_5)
+    # on marker 5 --> above marker 5
+    om5_to_am5 = tg.generate_straight_line(pen_5_xyz, pen_5_above_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(om5_to_am5)
     time.sleep(0.3)
-    current_joint = pick_5_to_pre_pick_5[-1]
+    current_joint = om5_to_am5[-1]
 
-    pre_pick_5_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
-    tf.follow_joint_trajectory(pre_pick_5_to_home)
+    # above marker 5 --> home
+    am5_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, duration=3)
+    tf.follow_joint_trajectory(am5_to_home)
     time.sleep(0.3)
-    current_joint = pre_pick_5_to_home[-1]
+    current_joint = am5_to_home[-1]
 
 else:
+    # home --> drop position
     home_to_drop = tg.generate_straight_line(home_xyz, drop_xyz, current_joint, pen_R, drop_R, duration=4)
     tf.follow_joint_trajectory(home_to_drop)
     time.sleep(0.3)
     current_joint = home_to_drop[-1]
+
+    # drop marker 2 into bin
     fa.open_gripper()
 
-    drop_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 4)
+    # drop position --> home
+    drop_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, 4)
     tf.follow_joint_trajectory(drop_to_home)
     time.sleep(0.3)
 
+'''-------------------------draw with marker 3---------------------------'''
 
-# Pick up pen 3
-home_to_pre_pick_3 = tg.generate_straight_line(home_xyz, pen_3_above_xyz, current_joint, pen_R, duration=3)
-tf.follow_joint_trajectory(home_to_pre_pick_3)
+# home --> above marker 3
+home_to_am3 = tg.generate_straight_line(home_xyz, pen_3_above_xyz, current_joint, pen_R, duration=3)
+tf.follow_joint_trajectory(home_to_am3)
 time.sleep(0.3)
-current_joint = home_to_pre_pick_3[-1]
+current_joint = home_to_am3[-1]
 
-pre_pick_3_to_pick_3 = tg.generate_straight_line(pen_3_above_xyz, pen_3_xyz, current_joint, pen_R, duration=1.5)
-tf.follow_joint_trajectory(pre_pick_3_to_pick_3)
+# above marker 3 --> on marker 3
+am3_to_om3 = tg.generate_straight_line(pen_3_above_xyz, pen_3_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(am3_to_om3)
 time.sleep(0.3)
+
+# grab marker 3
 fa.close_gripper()
 time.sleep(0.3)
-current_joint = pre_pick_3_to_pick_3[-1]
+current_joint = am3_to_om3[-1]
 
-pick_3_to_pre_pick_3 = tg.generate_straight_line(pen_3_xyz, pen_3_above_xyz, current_joint, pen_R, duration=1.5)
-tf.follow_joint_trajectory(pick_3_to_pre_pick_3)
+# on marker 3 --> above marker 3
+om3_to_am3 = tg.generate_straight_line(pen_3_xyz, pen_3_above_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(om3_to_am3)
 time.sleep(0.3)
-current_joint = pick_3_to_pre_pick_3[-1]
+current_joint = om3_to_am3[-1]
 
-pre_pick_3_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
-tf.follow_joint_trajectory(pre_pick_3_to_home)
+# above marker 3 --> home
+am3_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, duration=3)
+tf.follow_joint_trajectory(am3_to_home)
 time.sleep(0.3)
-current_joint = pre_pick_3_to_home[-1]
+current_joint = am3_to_home[-1]
 
 # Draw with pen 3
 home_to_above_au11 = tg.generate_straight_line(home_xyz, au_11-(0.05*whiteboard_pose[:3,2]), current_joint, pen_R, draw_R, duration=4)
@@ -500,42 +547,52 @@ current_joint = au22_to_above_center[-1]
 
 
 # Drop pen 3
-above_board_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 3)
+above_board_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, 3)
 tf.follow_joint_trajectory(above_board_to_home)
 time.sleep(0.3)
 current_joint = above_board_to_home[-1]
 
 decision = input(f"Type yes to put back to pen holder, type anything else to put into drop bin: ")
 if decision == "yes":
-    home_to_pre_pick_6 = tg.generate_straight_line(home_xyz, pen_6_above_xyz, current_joint, pen_R, duration=3)
-    tf.follow_joint_trajectory(home_to_pre_pick_6)
+    # home --> above marker 6
+    home_to_am6 = tg.generate_straight_line(home_xyz, pen_6_above_xyz, current_joint, pen_R, duration=3)
+    tf.follow_joint_trajectory(home_to_am6)
     time.sleep(0.3)
-    current_joint = home_to_pre_pick_6[-1]
+    current_joint = home_to_am6[-1]
 
-    pre_pick_6_to_pick_6 = tg.generate_straight_line(pen_6_above_xyz, pen_6_xyz, current_joint, pen_R, duration=2)
-    tf.follow_joint_trajectory(pre_pick_6_to_pick_6)
+    # above marker 6 --> on marker 6
+    am6_to_om6 = tg.generate_straight_line(pen_6_above_xyz, pen_6_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(am6_to_om6)
     time.sleep(0.3)
+
+    # drop marker 3 into slot 6
     fa.open_gripper()
     time.sleep(0.3)
-    current_joint = pre_pick_6_to_pick_6[-1]
+    current_joint = am6_to_om6[-1]
 
-    pick_6_to_pre_pick_6 = tg.generate_straight_line(pen_6_xyz, pen_6_above_xyz, current_joint, pen_R, duration=2)
-    tf.follow_joint_trajectory(pick_6_to_pre_pick_6)
+    # on marker 6 --> above marker 6
+    om6_to_am6 = tg.generate_straight_line(pen_6_xyz, pen_6_above_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(om6_to_am6)
     time.sleep(0.3)
-    current_joint = pick_6_to_pre_pick_6[-1]
+    current_joint = om6_to_am6[-1]
 
-    pre_pick_6_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
-    tf.follow_joint_trajectory(pre_pick_6_to_home)
+    # above makrer 6 --> home
+    am6_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, duration=3)
+    tf.follow_joint_trajectory(am6_to_home)
     time.sleep(0.3)
-    current_joint = pre_pick_6_to_home[-1]
+    current_joint = am6_to_home[-1]
 
 else:
+    # home --> drop position
     home_to_drop = tg.generate_straight_line(home_xyz, drop_xyz, current_joint, pen_R, drop_R, duration=5)
     tf.follow_joint_trajectory(home_to_drop)
     time.sleep(0.3)
     current_joint = home_to_drop[-1]
+
+    # drop marker 3 into bin
     fa.open_gripper()
 
-    drop_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 5)
+    # drop position --> home
+    drop_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_joints, max_vel, max_acc, 5)
     tf.follow_joint_trajectory(drop_to_home)
     time.sleep(0.3)
