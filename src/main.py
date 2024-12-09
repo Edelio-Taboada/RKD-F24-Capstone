@@ -4,18 +4,20 @@
     Your main fucntion can take in different command line arguments to run different parts of your code.
 """
 import argparse
-import numpy as np
-import utils
-from motion_planner import TrajectoryFollower
-from frankapy import FrankaArm
-import time
+from autolab_core import RigidTransform
+from motion_planner import TrajectoryFollower, TrajectoryGenerator
 from calibrate_workspace import WorkspaceCalibrator
-from robot_config import RobotConfig
-from robot import Robot
-import paths
-import test_paths
+import sys
+sys.path.append("../config")
 
-'''
+import numpy as np
+from robot import Robot
+from robot_config import RobotConfig
+from task_config import TaskConfig
+from frankapy import FrankaArm
+
+import time
+
 # Define default values
 parser = argparse.ArgumentParser()
 parser.add_argument('--foo', default=1, type=float, help='foo')
@@ -29,213 +31,511 @@ else:
 # Modify the container, add arguments, change values, etc.
 args.foo = 2
 args.bar = 3
-'''
 
-'''----------------constants---------------------'''
-MAX_ACCELERATIONS = [15, 7.5, 10, 12.5, 15, 20, 20]
-SAFE_MAX_ACCELERATIONS = [15, 7.5, 10, 12.5, 15, 20, 20]
-PEN_OFFSET = 0.03175       # distances measured in meters
-
-two_seconds = np.array([[0, 2]])
-five_seconds = np.array([[0, 5]])
-ten_seconds = np.array([[0, 10]])
-
-'''----------------calibration--------------------'''
-robot = Robot()
+# Call the program with passed arguments
 fa = FrankaArm()
-
+kinematics = Robot()
 calibrator = WorkspaceCalibrator()
 
-pen_grab_pose = calibrator.calibrate_pen_holders()
-on_marker_1_ee = np.eye(4)
-on_marker_1_ee[:3,:3] = pen_grab_pose.rotation
-on_marker_1_ee[:3,3] = pen_grab_pose.translation
-ee_at_pen2 = on_marker_1_ee + np.array([[0,0,0,PEN_OFFSET],
-                                    [0,0,0,0],
-                                    [0,0,0,0],
-                                    [0,0,0,0]])
-ee_at_pen3 = ee_at_pen2 + np.array([[0,0,0,PEN_OFFSET],
-                                    [0,0,0,0],
-                                    [0,0,0,0],
-                                    [0,0,0,0]])
+home_pose_q = RobotConfig.HOME_JOINTS
+home_xyz = kinematics.forward_kinematics(home_pose_q)[:3,3,-1]
+pen_R = kinematics.forward_kinematics(home_pose_q)[:3,:3,-1]
 
-whiteboard_pose = calibrator.calibrate_whiteboard()
-whiteboard_quat = whiteboard_pose.quaternion
+fa.reset_joints()
+fa.open_gripper()
 
-drop_pose = calibrator.calibrate_drop_location()
+pen_seperation = 0.058
+vertical_seperation = 0.15
 
-config = RobotConfig()
+calibrator.calibrate_pen_holders()
+pen_1_xyz = np.load('pen_holder_pose.npy',allow_pickle=True)
+pen_2_xyz = pen_1_xyz + np.array([pen_seperation,0,0])
+pen_3_xyz = pen_1_xyz - np.array([pen_seperation,0,0])
+pen_4_xyz = pen_1_xyz + np.array([pen_seperation/2.0,0,0])
+pen_5_xyz = pen_1_xyz - np.array([pen_seperation/2.0,0,0])
+pen_6_xyz = pen_1_xyz + np.array([0,0.035,0])
 
-home_joints = np.array(config.HOME_JOINTS)
-home_quat = utils._rotation_to_quaternion(robot.forward_kinematics(home_joints)[:3,:3])
+pen_1_above_xyz = pen_1_xyz + np.array([0,0,vertical_seperation])
+pen_2_above_xyz = pen_2_xyz + np.array([0,0,vertical_seperation])
+pen_3_above_xyz = pen_3_xyz + np.array([0,0,vertical_seperation])
+pen_4_above_xyz = pen_4_xyz + np.array([0,0,vertical_seperation])
+pen_5_above_xyz = pen_5_xyz + np.array([0,0,vertical_seperation])
+pen_6_above_xyz = pen_6_xyz + np.array([0,0,vertical_seperation])
 
-above_marker_1_ee = robot.forward_kinematics(on_marker_1_ee) + np.array([[0,0,0,0],
-                                                                         [0,0,0,0],
-                                                                         [0,0,0,config.PEN_LENGTH],
-                                                                         [0,0,0,0]])
-above_marker_1_joints = robot._inverse_kinematics(above_marker_1_ee, home_joints)
-above_marker_1_quat = utils._rotation_to_quaternion(above_marker_1_ee[:3,:3])
+pre_pick_ready_q = np.array([0.3874, -0.0308, 0.2433, -2.0961, 0.027, 2.0726, 1.3682])
+pre_pick_ready_pose = kinematics.forward_kinematics(pre_pick_ready_q)[:,:,-1]
+pre_pick_ready_xyz = pre_pick_ready_pose[:3,3]
 
-on_marker_1_joints = robot._inverse_kinematics(on_marker_1_ee,home_joints)
+fa.reset_joints()
+input(f"Press enter to grab pen...")
+fa.close_gripper()
 
-whiteboard_center_ee = np.eye(4)
-whiteboard_center_ee[:3,:3] = whiteboard_pose.rotation
-whiteboard_center_ee[:3,3] = whiteboard_pose.translation
-whiteboard_center_joints = robot._inverse_kinematics(whiteboard_center_ee,home_joints)
-whiteboard_center_quat = utils._rotation_to_quaternion(whiteboard_center_ee[:3,:3])
+calibrator.calibrate_whiteboard()
+whiteboard_pose = np.load('whiteboard_pose.npy',allow_pickle=True)
 
-above_bin_ee = np.eye(4)
-above_bin_ee[:3,:3] = drop_pose.rotation
-above_bin_ee[:3,3] = drop_pose.translation
-above_bin_joints = robot._inverse_kinematics(above_bin_ee,home_joints)
-above_bin_quat = utils._rotation_to_quaternion(above_bin_ee[:3,:3])
+whiteboard_xyz = whiteboard_pose[:3,3]
+whiteboard_R = whiteboard_pose[:3,:3]
 
+point_above_whiteboard_xyz = whiteboard_pose[:3,-1] - (0.05*whiteboard_pose[:3,2])
+whiteboard_POI_1 = whiteboard_pose[:3,-1] + (0.12*whiteboard_pose[:3,0]) # Creates a new point 10cm to the left of the center of the board
+whiteboard_POI_2 = whiteboard_pose[:3,-1] - (0.12*whiteboard_pose[:3,0]) # Creates a new point 10cm to the right of the center of the board
+whiteboard_POI_3 = whiteboard_pose[:3,-1] + (0.05*whiteboard_pose[:3,1]) # Creates a new point 5cm up from the center of the board
+whiteboard_POI_4 = whiteboard_pose[:3,-1] - (0.05*whiteboard_pose[:3,1]) # Creates a new point 5cm down from the center of the board
 
-'''----------------define paths between poses------------------'''
-###############  DRAW WITH MARKER 1  ##############################
-# home --> above marker 1 --> on marker 1 --> close gripper
-home_to_am1 = utils._slerp(home_quat, above_marker_1_quat, five_seconds)
-am1_to_om1 = utils.checkpoint_lerp(np.array([[above_marker_1_joints[i], on_marker_1_joints[i]]for i in range(7)]), five_seconds)
+au_1 = whiteboard_xyz + (0.05*whiteboard_pose[:3,0]) + (0.05*whiteboard_pose[:3,1])
+au_2 = whiteboard_xyz + (0.05*whiteboard_pose[:3,0]) + (-0.05*whiteboard_pose[:3,1])
+au_3 = whiteboard_xyz + (0.015*whiteboard_pose[:3,0]) + (0.06*whiteboard_pose[:3,1])
+au_4 = whiteboard_xyz + (0.03*whiteboard_pose[:3,0]) + (0.04*whiteboard_pose[:3,1])
+au_5 = whiteboard_xyz + (0.015*whiteboard_pose[:3,0]) + (0.025*whiteboard_pose[:3,1])
+au_6 = whiteboard_xyz + (0.015*whiteboard_pose[:3,0]) + (-0.01*whiteboard_pose[:3,1])
+au_7 = whiteboard_xyz + (0.015*whiteboard_pose[:3,0]) + (-0.05*whiteboard_pose[:3,1])
+au_8 = whiteboard_xyz + (-0.015*whiteboard_pose[:3,0]) + (-0.01*whiteboard_pose[:3,1])
+au_9 = whiteboard_xyz + (-0.015*whiteboard_pose[:3,0]) + (-0.05*whiteboard_pose[:3,1])
+au_10 = whiteboard_xyz + (0*whiteboard_pose[:3,0]) + (0.1*whiteboard_pose[:3,1])
+au_11 = whiteboard_xyz + (-0.05*whiteboard_pose[:3,0]) + (0.05*whiteboard_pose[:3,1])
+au_12 = whiteboard_xyz + (-0.025*whiteboard_pose[:3,0]) + (0.06*whiteboard_pose[:3,1])
+au_13 = whiteboard_xyz + (-0.025*whiteboard_pose[:3,0]) + (0.025*whiteboard_pose[:3,1])
+au_14 = whiteboard_xyz + (0.0325*whiteboard_pose[:3,0]) + (-0.07*whiteboard_pose[:3,1])
+au_15 = whiteboard_xyz + (-0.0325*whiteboard_pose[:3,0]) + (-0.07*whiteboard_pose[:3,1])
+au_16 = whiteboard_xyz + (-0.05*whiteboard_pose[:3,0]) + (-0.05*whiteboard_pose[:3,1])
+au_17 = whiteboard_xyz + (-0.04*whiteboard_pose[:3,0]) + (0.04*whiteboard_pose[:3,1])
+au_18 = whiteboard_xyz + (0.06*whiteboard_pose[:3,0]) + (0.06*whiteboard_pose[:3,1])
+au_19 = whiteboard_xyz + (0.09*whiteboard_pose[:3,0]) + (0.05*whiteboard_pose[:3,1])
+au_20 = whiteboard_xyz + (0.09*whiteboard_pose[:3,0]) + (-0.025*whiteboard_pose[:3,1])
+au_21 = whiteboard_xyz + (0.06*whiteboard_pose[:3,0]) + (-0.04*whiteboard_pose[:3,1])
+au_22 = whiteboard_xyz + (0.05*whiteboard_pose[:3,0]) + (-0.025*whiteboard_pose[:3,1])
 
-# on marker 1 --> above marker 1 --> home
-om1_to_am1 = utils.checkpoint_lerp(np.array([[on_marker_1_joints[i], above_marker_1_joints[i]]for i in range(7)]), five_seconds)
-am1_to_home = utils._slerp(above_marker_1_quat, home_quat, five_seconds)
+calibrator.calibrate_drop_location()
+drop_xyz = np.load('drop_bin_pose.npy',allow_pickle=True)
+drop_R = np.array([
+    [0.4945,-0.5327,-0.6868],
+    [-0.7354,-0.6776,-0.0039],
+    [-0.4633,0.5070,-0.7269]
+])
 
-# home --> whiteboard center --> draw path --> home
-home_to_wbc = utils._slerp(home_quat, whiteboard_center_quat, five_seconds)
+tg = TrajectoryGenerator()
+tf = TrajectoryFollower()
+max_vel = RobotConfig.MAX_VELOCITY
+max_acc = RobotConfig.MAX_ACCELERATION
 
+fa.reset_joints()
+fa.open_gripper()
 
-# otf_path = "./fonts/Milanello.otf"
-# glyph_data = paths.extract_glyph_paths(otf_path)
-    
-# letter = "B"
-# vector_path = glyph_data.get(letter)
-# discretized_points = test_paths.discretize_vector_path(vector_path, resolution=100)
-# ee_points = utils.whiteboard_2d_to_3d(robot, discretized_points, whiteboard_center_joints, whiteboard_T)
+# Pick up pen 1
+current_joint = np.array(home_pose_q)
+home_to_pre_pick_1 = tg.generate_straight_line(home_xyz, pen_1_above_xyz, current_joint, pen_R, duration=3)
+tf.follow_joint_trajectory(home_to_pre_pick_1)
+time.sleep(0.3)
+current_joint = home_to_pre_pick_1[-1]
 
-# drawing_trajectory = np.zeros((7, len(list(discretized_points))))
+pre_pick_1_to_pick_1 = tg.generate_straight_line(pen_1_above_xyz, pen_1_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(pre_pick_1_to_pick_1)
+time.sleep(0.3)
+fa.close_gripper()
+time.sleep(0.3)
+current_joint = pre_pick_1_to_pick_1[-1]
 
-# for i in range(len(list(ee_points))):
-#     ee_point = ee_points[i]
-#     drawing_joints = robot._inverse_kinematics(ee_point)
-#     drawing_trajectory[i,:] = drawing_joints
+pick_1_to_pre_pick_1 = tg.generate_straight_line(pen_1_xyz, pen_1_above_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(pick_1_to_pre_pick_1)
+time.sleep(0.3)
+current_joint = pick_1_to_pre_pick_1[-1]
 
-# wb_end_pose = drawing_trajectory[-1,:]
-wb_R = whiteboard_pose[:3,:3]
-wb_T = whiteboard_pose[:3,3]
-wb_translation = np.array([0.05, 0.05, 0, 0])
+pre_pick_1_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
+tf.follow_joint_trajectory(pre_pick_1_to_home)
+time.sleep(0.3)
+current_joint = pre_pick_1_to_home[-1]
 
+draw_R = whiteboard_R
 
-wb_translated_ee = np.eye(4)
-wb_translated_ee[:4,3] = whiteboard_pose @ wb_translation
-wb_translated_ee[:3,:3] = wb_R
+# Draw line with pen 1
+home_to_above_au1 = tg.generate_straight_line(home_xyz, au_1-(0.05*whiteboard_pose[:3,2]), current_joint, pen_R, draw_R, duration=4)
+tf.follow_joint_trajectory(home_to_above_au1)
+time.sleep(0.3)
+current_joint = home_to_above_au1[-1]
 
-wb_end_joints = robot._inverse_kinematics(wb_translated_ee,whiteboard_center_joints)
+above_au1_to_au1 = tg.generate_straight_line(au_1-(0.05*whiteboard_pose[:3,2]), au_1, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au1_to_au1)
+time.sleep(0.3)
+current_joint = above_au1_to_au1[-1]
 
-wb_draw = utils.checkpoint_lerp(np.array([[whiteboard_center_joints[i], wb_end_joints[i]]for i in range(7)]), five_seconds)
+au1_to_au2 = tg.generate_straight_line(au_1, au_2, current_joint, draw_R, duration=2)
+tf.follow_joint_trajectory(au1_to_au2)
+time.sleep(0.3)
+current_joint = au1_to_au2[-1]
 
-wb_to_home = utils.checkpoint_lerp(np.array([[wb_end_joints[i], home_joints[i]]for i in range(7)]), five_seconds)
+au2_to_above_au3 = tg.generate_straight_line(au_2, au_3-(0.05*whiteboard_pose[:3,2]), current_joint, draw_R, duration=2)
+tf.follow_joint_trajectory(au2_to_above_au3)
+time.sleep(0.3)
+current_joint = au2_to_above_au3[-1]
 
-# home --> above bin --> open gripper --> home
-home_to_ab = utils._slerp(home_quat, above_bin_quat, five_seconds)
-ab_to_home = utils.checkpoint_lerp(above_bin_quat, home_quat, five_seconds)
+above_au3_to_au3 = tg.generate_straight_line(au_3-(0.05*whiteboard_pose[:3,2]), au_3, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au3_to_au3)
+time.sleep(0.3)
+current_joint = above_au3_to_au3[-1]
 
+points = np.vstack((au_3, au_4, au_5))
+au3_to_au4_to_au5 = tg.generate_curve_3(points, current_joint, draw_R, duration=4)
+tf.follow_joint_trajectory(au3_to_au4_to_au5)
+time.sleep(0.3)
+current_joint = au3_to_au4_to_au5[-1]
 
-###############  DRAW WITH MARKER 2  ##############################
-# home --> above marker 2 --> on marker 2 --> close gripper 
+au5_to_above_au6 = tg.generate_straight_line(au_5, au_6-(0.05*whiteboard_pose[:3,2]), current_joint, draw_R, duration=2)
+tf.follow_joint_trajectory(au5_to_above_au6)
+time.sleep(0.3)
+current_joint = au5_to_above_au6[-1]
 
-# on marker 2 --> above marker 2 --> home
+above_au6_to_au6 = tg.generate_straight_line(au_6-(0.05*whiteboard_pose[:3,2]), au_6, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au6_to_au6)
+time.sleep(0.3)
+current_joint = above_au6_to_au6[-1]
 
-# home --> whiteboard center --> draw path --> home
+au6_to_au7 = tg.generate_straight_line(au_6, au_7, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(au6_to_au7)
+time.sleep(0.3)
+current_joint = au6_to_au7[-1]
 
-# home --> above bin --> open gripper --> home
+au7_to_above_au8 = tg.generate_straight_line(au_7, au_8-(0.05*whiteboard_pose[:3,2]), current_joint, draw_R, duration=2)
+tf.follow_joint_trajectory(au7_to_above_au8)
+time.sleep(0.3)
+current_joint = au7_to_above_au8[-1]
 
+above_au8_to_au8 = tg.generate_straight_line(au_8-(0.05*whiteboard_pose[:3,2]), au_8, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au8_to_au8)
+time.sleep(0.3)
+current_joint = above_au8_to_au8[-1]
 
-###############  DRAW WITH MARKER 3  ##############################
-# home --> above marker 3 --> on marker 3 --> close gripper 
+au8_to_au9 = tg.generate_straight_line(au_8, au_9, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(au8_to_au9)
+time.sleep(0.3)
+current_joint = au8_to_au9[-1]
 
-# on marker 3 --> above marker 3 --> home
+au9_to_above_board = tg.generate_straight_line(au_9, point_above_whiteboard_xyz, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(au9_to_above_board)
+time.sleep(0.3)
+current_joint = au9_to_above_board[-1]
 
-# home --> whiteboard center --> draw path --> home
+# Drop pen 1
+above_board_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 3)
+tf.follow_joint_trajectory(above_board_to_home)
+time.sleep(0.3)
+current_joint = above_board_to_home[-1]
 
-# home --> above bin --> open gripper --> home
+decision = input(f"Type yes to put back to pen holder, type anything else to put into drop bin: ")
+if decision == "yes":
+    current_joint = np.array(home_pose_q)
+    home_to_pre_pick_4 = tg.generate_straight_line(home_xyz, pen_4_above_xyz, current_joint, pen_R, duration=3)
+    tf.follow_joint_trajectory(home_to_pre_pick_4)
+    time.sleep(0.3)
+    current_joint = home_to_pre_pick_4[-1]
 
+    pre_pick_4_to_pick_4 = tg.generate_straight_line(pen_4_above_xyz, pen_4_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(pre_pick_4_to_pick_4)
+    time.sleep(0.3)
+    fa.open_gripper()
+    time.sleep(0.3)
+    current_joint = pre_pick_4_to_pick_4[-1]
 
+    pick_4_to_pre_pick_4 = tg.generate_straight_line(pen_4_xyz, pen_4_above_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(pick_4_to_pre_pick_4)
+    time.sleep(0.3)
+    current_joint = pick_4_to_pre_pick_4[-1]
 
+    pre_pick_4_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
+    tf.follow_joint_trajectory(pre_pick_4_to_home)
+    time.sleep(0.3)
+    current_joint = pre_pick_4_to_home[-1]
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# HOME_ROTATION = robot.forward_kinematics(HOME)[:3,:3]
-# HOME_QUATERNION = utils._rotation_to_quaternion(HOME_ROTATION)
-
-# AM1_QUATERNION = pass #TODO: figure out quaternion above marker 1
-
-# #HOME to above marker 1 (AM1)
-# SLERP_HOME_2_AM1 = utils._slerp(HOME_QUATERNION, AM1_QUATERNION, two_seconds) 
-# #above marker 1 (AM1) to on marker 1 (OM1)
-# LERP_AM1_2_OM1 = utils.checkpoint_lerp(np.array([[ABOVE_MARKER_1[i], ON_MARKER_1[i]]for i in range(7)]), two_seconds)
-# #on marker 1 (OM1) to above marker 1 (AM1)
-# LERP_OM1_2_AM1 = utils.checkpoint_lerp(np.array([[ON_MARKER_1[i], ABOVE_MARKER_1[i]]for i in range(7)]), two_seconds)
-
-# discritized_points_q2_q1 = utils.checkpoint_lerp(q2_q1, two_seconds)
-
-# discritized_points_q1_q3 = utils.checkpoint_lerp(q1_q3, two_seconds)
-
-
-
-if __name__ == '__main__':
-    fa = FrankaArm()
-    tf = TrajectoryFollower()
-
-    fa.reset_joints()
+else:
+    home_to_drop = tg.generate_straight_line(home_xyz, drop_xyz, current_joint, pen_R, drop_R, duration=4)
+    tf.follow_joint_trajectory(home_to_drop)
+    time.sleep(0.3)
+    current_joint = home_to_drop[-1]
     fa.open_gripper()
 
-    # home --> above marker 1
-    tf.follow_joint_trajectory(home_to_am1.T)
-    time.sleep(5)
-    # above marker 1 --> on marker 1
-    tf.follow_joint_trajectory(am1_to_om1.T)
-    time.sleep(5)
-    # grab marker
-    fa.close_gripper()
-    # on marker 1 --> above marker 1
-    tf.follow_joint_trajectory(om1_to_am1.T)
-    time.sleep(5)
-    # above marker 1 --> home
-    tf.follow_joint_trajectory(am1_to_home.T)
-    time.sleep(5)
-    # home --> whiteboard center
-    tf.follow_joint_trajectory(home_to_wbc.T)
-    time.sleep(5)
-    # draw on the whiteboard
-    tf.follow_joint_trajectory(wb_draw.T)
-    time.sleep(10)
-    # whiteboard --> home
-    tf.follow_joint_trajectory(wb_to_home.T)
-    time.sleep(5)
-    # home --> above bin
-    tf.follow_joint_trajectory(home_to_ab.T)
-    time.sleep(5)
-    # drop marker in bin
+    drop_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 4)
+    tf.follow_joint_trajectory(drop_to_home)
+    time.sleep(0.3)
+
+# Pick up pen 2
+current_joint = np.array(home_pose_q)
+home_to_pre_pick_2 = tg.generate_straight_line(home_xyz, pen_2_above_xyz, current_joint, pen_R, duration=3)
+tf.follow_joint_trajectory(home_to_pre_pick_2)
+time.sleep(0.3)
+current_joint = home_to_pre_pick_2[-1]
+
+pre_pick_2_to_pick_2 = tg.generate_straight_line(pen_2_above_xyz, pen_2_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(pre_pick_2_to_pick_2)
+time.sleep(0.3)
+fa.close_gripper()
+time.sleep(0.3)
+current_joint = pre_pick_2_to_pick_2[-1]
+
+pick_2_to_pre_pick_2 = tg.generate_straight_line(pen_2_xyz, pen_2_above_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(pick_2_to_pre_pick_2)
+time.sleep(0.3)
+current_joint = pick_2_to_pre_pick_2[-1]
+
+pre_pick_2_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
+tf.follow_joint_trajectory(pre_pick_2_to_home)
+time.sleep(0.3)
+current_joint = pre_pick_2_to_home[-1]
+
+# Draw with pen 2
+home_to_above_au1 = tg.generate_straight_line(home_xyz, au_1-(0.05*whiteboard_pose[:3,2]), current_joint, pen_R, draw_R, duration=4)
+tf.follow_joint_trajectory(home_to_above_au1)
+time.sleep(0.3)
+current_joint = home_to_above_au1[-1]
+
+above_au1_to_au1 = tg.generate_straight_line(au_1-(0.05*whiteboard_pose[:3,2]), au_1, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au1_to_au1)
+time.sleep(0.3)
+current_joint = above_au1_to_au1[-1]
+
+points = np.vstack((au_1, au_10, au_11))
+au1_to_au10_to_au11 = tg.generate_curve_3(points, current_joint, draw_R, duration=4)
+tf.follow_joint_trajectory(au1_to_au10_to_au11)
+time.sleep(0.3)
+current_joint = au1_to_au10_to_au11[-1]
+
+au11_to_above_au3 = tg.generate_straight_line(au_11, au_3-(0.05*whiteboard_pose[:3,2]), current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(au11_to_above_au3)
+time.sleep(0.3)
+current_joint = au11_to_above_au3[-1]
+
+above_au3_to_au3 = tg.generate_straight_line(au_3-(0.05*whiteboard_pose[:3,2]), au_3, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au3_to_au3)
+time.sleep(0.3)
+current_joint = above_au3_to_au3[-1]
+
+au3_to_au12 = tg.generate_straight_line(au_3, au_12, current_joint, draw_R, duration=2)
+tf.follow_joint_trajectory(au3_to_au12)
+time.sleep(0.3)
+current_joint = au3_to_au12[-1]
+
+au12_to_above_au5 = tg.generate_straight_line(au_12, au_5-(0.05*whiteboard_pose[:3,2]), current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(au12_to_above_au5)
+time.sleep(0.3)
+current_joint = au12_to_above_au5[-1]
+
+above_au5_to_au5 = tg.generate_straight_line(au_5-(0.05*whiteboard_pose[:3,2]), au_5, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au5_to_au5)
+time.sleep(0.3)
+current_joint = above_au5_to_au5[-1]
+
+au5_to_au13 = tg.generate_straight_line(au_5, au_13, current_joint, draw_R, duration=2)
+tf.follow_joint_trajectory(au5_to_au13)
+time.sleep(0.3)
+current_joint = au5_to_au13[-1]
+
+au13_to_above_au6 = tg.generate_straight_line(au_13, au_6-(0.05*whiteboard_pose[:3,2]), current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(au13_to_above_au6)
+time.sleep(0.3)
+current_joint = au13_to_above_au6[-1]
+
+above_au6_to_au6 = tg.generate_straight_line(au_6-(0.05*whiteboard_pose[:3,2]), au_6, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au6_to_au6)
+time.sleep(0.3)
+current_joint = above_au6_to_au6[-1]
+
+au6_to_au8 = tg.generate_straight_line(au_6, au_8, current_joint, draw_R, duration=2)
+tf.follow_joint_trajectory(au6_to_au8)
+time.sleep(0.3)
+current_joint = au6_to_au8[-1]
+
+au8_to_above_au2 = tg.generate_straight_line(au_8, au_2-(0.05*whiteboard_pose[:3,2]), current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(au8_to_above_au2)
+time.sleep(0.3)
+current_joint = au8_to_above_au2[-1]
+
+above_au2_to_au2 = tg.generate_straight_line(au_2-(0.05*whiteboard_pose[:3,2]), au_2, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au2_to_au2)
+time.sleep(0.3)
+current_joint = above_au2_to_au2[-1]
+
+points = np.vstack((au_2, au_14, au_7))
+au2_to_au14_to_au7 = tg.generate_curve_3(points, current_joint, draw_R, duration=3)
+tf.follow_joint_trajectory(au2_to_au14_to_au7)
+time.sleep(0.3)
+current_joint = au2_to_au14_to_au7[-1]
+
+au7_to_above_au9 = tg.generate_straight_line(au_7, au_9-(0.05*whiteboard_pose[:3,2]), current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(au7_to_above_au9)
+time.sleep(0.3)
+current_joint = au7_to_above_au9[-1]
+
+above_au9_to_au9 = tg.generate_straight_line(au_9-(0.05*whiteboard_pose[:3,2]), au_9, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au9_to_au9)
+time.sleep(0.3)
+current_joint = above_au9_to_au9[-1]
+
+points = np.vstack((au_9, au_15, au_16))
+au9_to_au15_to_au16 = tg.generate_curve_3(points, current_joint, draw_R, duration=3)
+tf.follow_joint_trajectory(au9_to_au15_to_au16)
+time.sleep(0.3)
+current_joint = au9_to_au15_to_au16[-1]
+
+au16_to_above_center = tg.generate_straight_line(au_16, point_above_whiteboard_xyz, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(au16_to_above_center)
+time.sleep(0.3)
+current_joint = au16_to_above_center[-1]
+
+# Drop pen 2
+above_board_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 3)
+tf.follow_joint_trajectory(above_board_to_home)
+time.sleep(0.3)
+current_joint = above_board_to_home[-1]
+
+decision = input(f"Type yes to put back to pen holder, type anything else to put into drop bin: ")
+if decision == "yes":
+    current_joint = np.array(home_pose_q)
+    home_to_pre_pick_5 = tg.generate_straight_line(home_xyz, pen_5_above_xyz, current_joint, pen_R, duration=3)
+    tf.follow_joint_trajectory(home_to_pre_pick_5)
+    time.sleep(0.3)
+    current_joint = home_to_pre_pick_5[-1]
+
+    pre_pick_5_to_pick_5 = tg.generate_straight_line(pen_5_above_xyz, pen_5_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(pre_pick_5_to_pick_5)
+    time.sleep(0.3)
     fa.open_gripper()
-    # above bin --> home
-    tf.follow_joint_trajectory(ab_to_home.T)
-    time.sleep(5)
+    time.sleep(0.3)
+    current_joint = pre_pick_5_to_pick_5[-1]
+
+    pick_5_to_pre_pick_5 = tg.generate_straight_line(pen_5_xyz, pen_5_above_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(pick_5_to_pre_pick_5)
+    time.sleep(0.3)
+    current_joint = pick_5_to_pre_pick_5[-1]
+
+    pre_pick_5_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
+    tf.follow_joint_trajectory(pre_pick_5_to_home)
+    time.sleep(0.3)
+    current_joint = pre_pick_5_to_home[-1]
+
+else:
+    home_to_drop = tg.generate_straight_line(home_xyz, drop_xyz, current_joint, pen_R, drop_R, duration=4)
+    tf.follow_joint_trajectory(home_to_drop)
+    time.sleep(0.3)
+    current_joint = home_to_drop[-1]
+    fa.open_gripper()
+
+    drop_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 4)
+    tf.follow_joint_trajectory(drop_to_home)
+    time.sleep(0.3)
 
 
+# Pick up pen 3
+home_to_pre_pick_3 = tg.generate_straight_line(home_xyz, pen_3_above_xyz, current_joint, pen_R, duration=3)
+tf.follow_joint_trajectory(home_to_pre_pick_3)
+time.sleep(0.3)
+current_joint = home_to_pre_pick_3[-1]
 
-    # return home
-    fa.reset_joints()
+pre_pick_3_to_pick_3 = tg.generate_straight_line(pen_3_above_xyz, pen_3_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(pre_pick_3_to_pick_3)
+time.sleep(0.3)
+fa.close_gripper()
+time.sleep(0.3)
+current_joint = pre_pick_3_to_pick_3[-1]
 
+pick_3_to_pre_pick_3 = tg.generate_straight_line(pen_3_xyz, pen_3_above_xyz, current_joint, pen_R, duration=1.5)
+tf.follow_joint_trajectory(pick_3_to_pre_pick_3)
+time.sleep(0.3)
+current_joint = pick_3_to_pre_pick_3[-1]
+
+pre_pick_3_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
+tf.follow_joint_trajectory(pre_pick_3_to_home)
+time.sleep(0.3)
+current_joint = pre_pick_3_to_home[-1]
+
+# Draw with pen 3
+home_to_above_au11 = tg.generate_straight_line(home_xyz, au_11-(0.05*whiteboard_pose[:3,2]), current_joint, pen_R, draw_R, duration=4)
+tf.follow_joint_trajectory(home_to_above_au11)
+time.sleep(0.3)
+current_joint = home_to_above_au11[-1]
+
+above_au11_to_au11 = tg.generate_straight_line(au_11-(0.05*whiteboard_pose[:3,2]), au_11, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au11_to_au11)
+time.sleep(0.3)
+current_joint = above_au11_to_au11[-1]
+
+au11_to_au16 = tg.generate_straight_line(au_11, au_16, current_joint, draw_R, duration=2)
+tf.follow_joint_trajectory(au11_to_au16)
+time.sleep(0.3)
+current_joint = au11_to_au16[-1]
+
+au16_to_above_au12 = tg.generate_straight_line(au_16, au_12-(0.05*whiteboard_pose[:3,2]), current_joint, pen_R, draw_R, duration=1)
+tf.follow_joint_trajectory(au16_to_above_au12)
+time.sleep(0.3)
+current_joint = au16_to_above_au12[-1]
+
+above_au12_to_au12 = tg.generate_straight_line(au_12-(0.05*whiteboard_pose[:3,2]), au_12, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au12_to_au12)
+time.sleep(0.3)
+current_joint = above_au12_to_au12[-1]
+
+points = np.vstack((au_12, au_17, au_13))
+au12_to_au17_to_au13 = tg.generate_curve_3(points, current_joint, draw_R, duration=3)
+tf.follow_joint_trajectory(au12_to_au17_to_au13)
+time.sleep(0.3)
+current_joint = au12_to_au17_to_au13[-1]
+
+au13_to_above_au1 = tg.generate_straight_line(au_13, au_1-(0.05*whiteboard_pose[:3,2]), current_joint, pen_R, draw_R, duration=1)
+tf.follow_joint_trajectory(au13_to_above_au1)
+time.sleep(0.3)
+current_joint = au13_to_above_au1[-1]
+
+above_au1_to_au1 = tg.generate_straight_line(au_1-(0.05*whiteboard_pose[:3,2]), au_1, current_joint, draw_R, duration=1)
+tf.follow_joint_trajectory(above_au1_to_au1)
+time.sleep(0.3)
+current_joint = above_au1_to_au1[-1]
+
+points = np.vstack((au_1, au_18, au_19, au_20, au_21, au_22))
+au1_to_au22 = tg.generate_curve_3(points, current_joint, draw_R, duration=8)
+tf.follow_joint_trajectory(au1_to_au22)
+time.sleep(0.3)
+current_joint = au1_to_au22[-1]
+
+au22_to_above_center = tg.generate_straight_line(au_22, point_above_whiteboard_xyz, current_joint, pen_R, draw_R, duration=1)
+tf.follow_joint_trajectory(au22_to_above_center)
+time.sleep(0.3)
+current_joint = au22_to_above_center[-1]
+
+
+# Drop pen 3
+above_board_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 3)
+tf.follow_joint_trajectory(above_board_to_home)
+time.sleep(0.3)
+current_joint = above_board_to_home[-1]
+
+decision = input(f"Type yes to put back to pen holder, type anything else to put into drop bin: ")
+if decision == "yes":
+    home_to_pre_pick_6 = tg.generate_straight_line(home_xyz, pen_6_above_xyz, current_joint, pen_R, duration=3)
+    tf.follow_joint_trajectory(home_to_pre_pick_6)
+    time.sleep(0.3)
+    current_joint = home_to_pre_pick_6[-1]
+
+    pre_pick_6_to_pick_6 = tg.generate_straight_line(pen_6_above_xyz, pen_6_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(pre_pick_6_to_pick_6)
+    time.sleep(0.3)
+    fa.open_gripper()
+    time.sleep(0.3)
+    current_joint = pre_pick_6_to_pick_6[-1]
+
+    pick_6_to_pre_pick_6 = tg.generate_straight_line(pen_6_xyz, pen_6_above_xyz, current_joint, pen_R, duration=2)
+    tf.follow_joint_trajectory(pick_6_to_pre_pick_6)
+    time.sleep(0.3)
+    current_joint = pick_6_to_pre_pick_6[-1]
+
+    pre_pick_6_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, duration=3)
+    tf.follow_joint_trajectory(pre_pick_6_to_home)
+    time.sleep(0.3)
+    current_joint = pre_pick_6_to_home[-1]
+
+else:
+    home_to_drop = tg.generate_straight_line(home_xyz, drop_xyz, current_joint, pen_R, drop_R, duration=5)
+    tf.follow_joint_trajectory(home_to_drop)
+    time.sleep(0.3)
+    current_joint = home_to_drop[-1]
+    fa.open_gripper()
+
+    drop_to_home = tg.generate_trapezoidal_trajectory(current_joint, home_pose_q, max_vel, max_acc, 5)
+    tf.follow_joint_trajectory(drop_to_home)
+    time.sleep(0.3)

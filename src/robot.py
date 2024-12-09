@@ -1,104 +1,15 @@
 import sys
 sys.path.append('../config')
 import numpy as np
-import utils
-from scipy.spatial.transform import Rotation as R
-import copy, math
-# from frankapy import FrankaArm
-# from robot_config import RobotConfig
-# from task_config import TaskConfig
+from frankapy import FrankaArm
+from autolab_core import RigidTransform
+from robot_config import RobotConfig
+from task_config import TaskConfig
 
 class Robot:
-    # def __init__(self, L_frame, R_frame, M_frame):
     def __init__(self):
         """Initialize motion planner with robot controller"""
-        # frames are from calibrate_workspace
         self.dof = 7
-        self.marker_len = 0
-        self.gripping_marker = False
-
-        self.DH_PARAMS_NO_THETAS = np.array([
-            [0,         0,          0.333],
-            [0,         -np.pi/2,   0],
-            [0,         np.pi/2,    0.316],
-            [0.0825,    np.pi/2,    0],
-            [-0.0825,   -np.pi/2,   0.384],
-            [0,         np.pi/2,    0],
-            [0.088,     np.pi/2,    0],
-            [0,         0,          0.107+0.1034],
-            [0,         0,          self.marker_len]
-        ])
-
-        # given initialized frames, create the normal vector for the whiteboard
-        # L_points = L_frame[0:3, -1]
-        # R_points = R_frame[0:3, -1]
-        # M_points = M_frame[0:3, -1]
-
-        # A = L_points - M_points
-        # B = R_points - M_points
-        # self.wb_normal = np.cross(A, B)
-
-    def change_marker_len(self, new_len):
-        self.marker_len = new_len
-
-    def gripping_marker(self,gripping):
-        self.gripping_marker = gripping
-
-    def dh_frame_from_vals(self, alpha, a, d, theta):
-        
-        c_a = np.cos(alpha)
-        s_a = np.sin(alpha)
-        c_t = np.cos(theta)
-        s_t = np.sin(theta)
-
-        return np.array([
-            [c_t,      -s_t,        0,      a       ],
-            [c_a*s_t,   c_a*c_t,   -s_a,   -d*s_a  ],
-            [s_a*s_t,   c_t*s_a,    c_a,    d*c_a   ],
-            [0,         0,          0,      1       ]
-        ])
-
-    
-    def dh_parameter_frames(self, dh_parameters, thetas):
-        if thetas.ndim != 1:
-            raise ValueError('Expecting a 1D array of joint angles.')
-
-        if thetas.shape[0] != self.dof:
-            raise ValueError(f'Invalid number of joints: {thetas.shape[0]} found, expecting {self.dof}')
-        
-        # --------------- BEGIN STUDENT SECTION ------------------------------------------------
-        frames = np.zeros((self.dof + 2, 4, 4))
-
-        for joint in range(0, self.dof):
-            theta = thetas[joint]
-            a = dh_parameters[joint][0]
-            alpha = dh_parameters[joint][1]
-            d = dh_parameters[joint][2]
-
-            frames[joint] = self.dh_frame_from_vals(alpha, a, d, theta)
-        
-        theta = 0-np.pi/4 * self.gripping_marker
-        a = 0
-        alpha = 0
-        d = 0.107 + 0.1034 + self.marker_len * self.gripping_marker
-
-        frames[self.dof] = self.dh_frame_from_vals(alpha, a, d, theta)
-
-        theta = 0
-        a = 0
-        alpha = 0
-        d = 0
-
-        frames[self.dof+1] = self.dh_frame_from_vals(alpha, a, d, theta)
-        # end effector frame
-        # theta = 0
-        # a = 0
-        # alpha = 0
-        # d = self.marker_len
-
-        # frames[self.dof] = self.dh_frame_from_vals(alpha, a, d, theta)
-
-        return frames
     
     def forward_kinematics(self, thetas):
         """
@@ -111,7 +22,7 @@ class Robot:
         Parameters
         ----------
         dh_parameters: np.ndarray
-            DH parameters (you can choose to apply the offset to the tool flange, center of gripper, or the pen tip)
+            DH parameters (you can choose to apply the offset to the tool flange or the pen tip)
         thetas : np.ndarray
             All joint angles
             
@@ -120,41 +31,54 @@ class Robot:
         np.ndarray
             End-effector pose
         """
-        if thetas.ndim != 1:
-            raise ValueError('Expecting a 1D array of joint angles.')
-
-        if thetas.shape[0] != self.dof:
-            raise ValueError(f'Invalid number of joints: {thetas.shape[0]} found, expecting {self.dof}')
-        
         # --------------- BEGIN STUDENT SECTION ------------------------------------------------
-        
-        dh_frames = self.dh_parameter_frames(self.DH_PARAMS_NO_THETAS, thetas)
-        # print("MY DH FRAMES")
-        # print(dh_frames)
+        # TODO
+        dh_parameters = self._get_dh_parameters(thetas)
+        frames = np.zeros((4, 4, len(dh_parameters)+1))
+        frames[:, :, 0] = np.eye(4)
+        H = np.eye(4)
 
-        all_frames = np.zeros((self.dof + 2, 4, 4))
+        for i in range(self.dof):
+            a, alpha, d, theta = dh_parameters[i,:]
 
-        all_frames[0, :, :] = np.array([
-            [1, 0, 0, 0],
-            [0, 1, 0, 0],
-            [0, 0, 1, 0],
-            [0, 0, 0, 1]
-        ])
+            Rot_x = np.array([
+                [1,0,0,0],
+                [0,np.cos(alpha),-np.sin(alpha),0],
+                [0,np.sin(alpha),np.cos(alpha),0],
+                [0,0,0,1]
+            ])
+            Trans_x = np.array([
+                [1,0,0,a],
+                [0,1,0,0],
+                [0,0,1,0],
+                [0,0,0,1]
+            ])
+            Trans_z = np.array([
+                [1,0,0,0],
+                [0,1,0,0],
+                [0,0,1,d],
+                [0,0,0,1]
+            ])
+            Rot_z = np.array([
+                [np.cos(theta),-np.sin(theta),0,0],
+                [np.sin(theta),np.cos(theta),0,0],
+                [0,0,1,0],
+                [0,0,0,1]
+            ])
 
-        for joint in range(1, self.dof + 2):
-            all_frames[joint, :, :] = np.matmul(all_frames[joint-1, :, :], dh_frames[joint-1])
-           
-        return all_frames
+            H_i = Rot_x @ Trans_x @ Trans_z @ Rot_z
+
+            H = H @ H_i
+
+            frames[:,:,i+1] = H 
+
+        return frames
+
         # --------------- END STUDENT SECTION --------------------------------------------------
-
     
-    def ef_jacobian(self, thetas):
+    def jacobians(self, thetas):
         """
-        Compute the Jacobian for the end effector frame.
-        NOTE:   this is a 6 by self.dof matrix (6x7)
-                The columns correspond to each joint,
-                The rows correspond to each cartesian movement type
-                                        (x, y, z, roll, pitch, yaw)
+        Compute the Jacobians for each frame.
 
         Parameters
         ----------
@@ -164,12 +88,13 @@ class Robot:
         Returns
         -------
         np.ndarray
-            jacobian
+            Jacobians
         """
         if thetas.shape != (self.dof,):
             raise ValueError(f'Invalid thetas: Expected shape ({self.dof},), got {thetas.shape}.')
-        
-        # epsilon = 0.001
+
+        jacobians = np.zeros((6, self.dof, self.dof + 1))
+        epsilon = 1e-6
 
         # --------------- BEGIN STUDENT SECTION ----------------------------------------
         # TODO: Implement the numerical computation of the Jacobians
@@ -179,75 +104,88 @@ class Robot:
         # - Compute numerical derivatives for x, y, and positions.
         # - Determine the rotational component based on joint contributions.
 
-        # using the formula from lecture 19
-        # I don't think this is the same as numerical IK
+        # if thetas.shape != (self.dof,):
+        #     raise ValueError(f'Invalid thetas: Expected shape ({self.dof},), got {thetas.shape}.')
 
-        jacobian = np.zeros((6, self.dof))
+        # jacobians = np.zeros((6, self.dof, self.dof + 1))
+        # frames = self.forward_kinematics(thetas)
+        # for j in range(self.dof + 1):
+        #     o_j = frames[0:3, 3, j]
+        #     for i in range(self.dof):
+        #         o_i = frames[0:3, 3, i]
+        #         z_i = frames[0:3, 2, i]  
+        #         jacobians[0:3, i, j] = np.cross(z_i, o_j - o_i)
+        #         jacobians[3:6, i, j] = z_i
+            
+        # return jacobians
 
-        fk_frames = self.forward_kinematics(thetas)
+        for i in range(self.dof):
+            delta = np.zeros(len(thetas))
+            delta[i] = epsilon 
 
-        # last frame, first three rows, last column
-        O_6 = fk_frames[8, 0:3, -1]
-        # print(O_6)
+            thetas_plus = thetas + delta 
+            thetas_minus = thetas - delta 
 
-        # print(O_6)
+            frames_plus = self.forward_kinematics(thetas_plus)
+            frames_minus = self.forward_kinematics(thetas_minus)
 
-        for i1 in range(0, self.dof):
-            # angular part is easier, so we'll start with that
-            # given the curent joint we are looking at:
-                # we pick out the "previous" fk_frame,
-                # and take the first three rows of the 3rd column (the z-column)
-            Z_i1 = fk_frames[i1+1, 0:3, 2]
-            jacobian[3:6, i1] = Z_i1
+            for j in range(self.dof + 1):
+                position_plus = frames_plus[0:3, 3, j]
+                position_minus = frames_minus[0:3, 3, j]
+                delta_position = (position_plus - position_minus) / (2 * epsilon)
 
-            # now we do linear stuff:
-                # first let's grab O_{i-1}
-            O_i1 = fk_frames[i1+1, 0:3, -1]
-            O_subtracted = O_6 - O_i1
+                rotation_plus = frames_plus[0:3, 0:3, j]
+                rotation_minus = frames_minus[0:3, 0:3, j]
+                diff_R = rotation_plus @ rotation_minus.T
 
-                # we can use the same Z_i1 we already grabbed for the angle,
-                # and now we just take the cross product
-            jacobian[0:3, i1] = np.cross(Z_i1, O_subtracted)
+                trace = np.trace(diff_R)
 
-        return jacobian
+                cos_theta = (trace - 1)/2 
+                cos_theta = np.clip(cos_theta, -1.0, 1.0)
+                theta = np.arccos(cos_theta) 
 
+                if abs(theta) < 1e-7:
+                    delta_rotation = np.zeros(3)
+                else:
+                    axis_denominator = 2 * np.sin(theta)
+                    if abs(axis_denominator) < 1e-7:
+                        delta_rotation = np.zeros(3)
+                    else:
+                        axis = (1 / axis_denominator) * np.array([
+                            diff_R[2, 1] - diff_R[1, 2],
+                            diff_R[0, 2] - diff_R[2, 0],
+                            diff_R[1, 0] - diff_R[0, 1]
+                        ])
+                        axis_norm = np.linalg.norm(axis)
+                        if axis_norm < 1e-6:
+                            delta_rotation = np.zeros(3)
+                        else:
+                            axis = axis / axis_norm
+                            delta_rotation = theta * axis / (2*epsilon)
 
+                # rotation_plus = frames_plus[0:3, 0:3, j]
+                # rotation_minus = frames_minus[0:3, 0:3, j]
+                # rotation_diff = rotation_plus @ rotation_minus.T
 
-        # raise NotImplementedError("Implement jacobians")
+                # trace = np.trace(rotation_diff)
+                # theta = np.arccos((trace - 1)/ 2)
+
+                # axis = np.array([
+                #     rotation_diff[2, 1] - rotation_diff[1, 2],
+                #     rotation_diff[0, 2] - rotation_diff[2, 0],
+                #     rotation_diff[1, 0] - rotation_diff[0, 1]
+                #     ])
+                # axis = axis/np.linalg.norm(axis)
+                # delta_rotation = (theta * axis) / (2 * epsilon)    
+
+                jacobians[0:3, i, j] = delta_position
+                jacobians[3:6, i, j] = delta_rotation
+
+        return jacobians
+
         # --------------- END STUDENT SECTION --------------------------------------------
     
 
-    def error_from_poses(self, cur_pose, target_pose):
-        # print("POSE:")
-        # print(frame)
-        
-        # print("rotation")
-        # ee_rotation = frame[0:3, 0:3]
-        # print(ee_rotation)
-        R_cur = cur_pose[0:3, 0:3]
-        R_target = target_pose[0:3, 0:3]
-
-        R_error = np.matmul(R_cur.T, R_target)
-
-        # Credit: Shahram :D
-        orientation_error = 0.5 * np.array([
-            R_error[2, 1] - R_error[1, 2],   # Angular error around x-axis
-            R_error[0, 2] - R_error[2, 0],   # Angular error around y-axis
-            R_error[1, 0] - R_error[0, 1]    # Angular error around z-axis
-        ])
-
-        subtracted = target_pose - cur_pose
-        ee_XYZ = subtracted[0:3, 3]
-
-        ee_converted = np.zeros((6, 1))
-        ee_converted[0:3, 0] = ee_XYZ
-        ee_converted[3:6, 0] = orientation_error
-
-        # print(ee_converted)
-        # print()
-        
-        return ee_converted
-    
     def _inverse_kinematics(self, target_pose, seed_joints):
         """
         Compute inverse kinematics using Jacobian pseudo-inverse method.
@@ -260,7 +198,7 @@ class Robot:
         
         Parameters
         ----------
-        target_pose : 4x4 np.ndarray
+        target_pose : RigidTransform
             Desired end-effector pose
         seed_joints : np.ndarray
             Initial joint configuration
@@ -272,86 +210,218 @@ class Robot:
             
         Hints
         -----
-        - Use get_pose() from robot arm
-        - Implement a helper function to track pose error magnitude for convergence
-        - The iteration parameters are defined in RobotConfig and TaskConfig, feel free to update them
+        - Use get_pose() and get_jacobian() from robot arm
+        - Use _compute_rotation_error() for orientation error
+        - Check joint limits with is_joints_reachable()
+        - Track pose error magnitude for convergence
+        - The iteration parameters are defined in RobotConfig and TaskConfig
         """
+        # if seed_joints.shape[0] != (self.dof):
+        #     raise ValueError(f'Invalid initial_thetas: Expected shape ({self.dof},), got {seed_joints.shape}.')
+        # #print(type(target_pose))    
+        # #print(target_pose)
+        # #print(target_pose.shape)
+        # if target_pose.shape != (4,4):
+        #     raise ValueError('Invalid target_pose: Expected a 4x4 Transformation.')
         
-        if seed_joints.shape != (self.dof,):
-            raise ValueError(f'Invalid initial_thetas: Expected shape ({self.dof},), got {seed_joints.shape}.')
+        # if seed_joints is None:
+        #     seed_joints = self.robot.arm.get_joints()
         
-        if seed_joints is None:
-            seed_joints = self.robot.arm.get_joints()
+        # # --------------- BEGIN STUDENT SECTION ------------------------------------------------
+        # # TODO: Implement gradient inverse kinematics
+        # max_iter = TaskConfig.IK_MAX_ITERATIONS
+        # stop_gradient = TaskConfig.IK_TOLERANCE
+        # gradient_step = 0.3
+
+        # current_joints = seed_joints
+        # current_pose = self.forward_kinematics(current_joints)[:,:,-1]
+
+        # jacobian = self.jacobians(current_joints)[:,:,-1]
+        # j_T = jacobian.T
         
-        # --------------- BEGIN STUDENT SECTION ------------------------------------------------
-        # TODO: Implement gradient inverse kinematics
-        # thetas is a copy of the original joint configuration
-        
-        print("Trying to get to target_pose:")
-        print(target_pose)
-        print()
-        print()
+        # gradient = j_T @ self._compute_config_error(current_pose,target_pose)
+        # # print(f"Starting error: {self._compute_config_error(current_pose,target_pose)}")
+        # # print(f"Starting gradient: {gradient}")
 
-        thetas = seed_joints.copy()
+        # iter_count = 0
+        # while(iter_count<max_iter and np.linalg.norm(gradient)>stop_gradient):
+        #     current_joints -= gradient_step*gradient
+        #     current_pose = self.forward_kinematics(current_joints)[:,:,-1]
+        #     jacobian = self.jacobians(current_joints)[:,:,-1]
+        #     j_T = jacobian.T
+        #     gradient = j_T @ self._compute_config_error(current_pose,target_pose)
+        #     iter_count += 1
+        # #print(current_joints)
+        # #print(iter_count)	
+        # return current_joints
 
-        #step size for gradient descent (arbitrary)
-        step_size = 0.1
+        max_iterations = TaskConfig.IK_MAX_ITERATIONS+100
+        tolerance = TaskConfig.IK_TOLERANCE
+        learning_rate = 0.1
 
-        #once the norm of the computed gradient is less than the stopping condition
-        #we stop optimizing
-        stopping_condition = 0.00005
+        joint_angles = seed_joints.copy()
 
-        #max number of iterations
-        max_iter = 10000
-        num_iter = 0
+        for step in range(max_iterations):
+            all_frames = self.forward_kinematics(joint_angles)
+            current_end_effector = all_frames[:, :, -1]
+            position_delta = target_pose[:3, 3] - current_end_effector[:3, 3]
+            desired_rotation = target_pose[:3, :3]
+            current_rotation = current_end_effector[:3, :3]
+            rotation_difference = desired_rotation @ current_rotation.T
+            trace_value = np.trace(rotation_difference)
+            cos_theta = (trace_value - 1) / 2.0
+            cos_theta = np.clip(cos_theta, -1.0, 1.0)
+            angular_error = np.arccos(cos_theta)
 
-        while num_iter < max_iter:
-            # [x,y,z,theta] goal
-            cost_gradient = np.zeros(self.dof)
-            #compute current end effector pose
-            # ee_pose = self.frame_to_pose(self.forward_kinematics(thetas)[-1])
+            if np.isclose(angular_error, 0):
+                orientation_delta = np.zeros(3)
+            else:
+                orientation_delta = (angular_error / (2 * np.sin(angular_error))) * np.array([
+                    rotation_difference[2, 1] - rotation_difference[1, 2],
+                    rotation_difference[0, 2] - rotation_difference[2, 0],
+                    rotation_difference[1, 0] - rotation_difference[0, 1]
+                ])
 
-            #compute the difference between current position and goal
-            cur_pose = self.forward_kinematics(thetas)[-1]
-            error = self.error_from_poses(cur_pose, target_pose)
-            #compute the Jacobian
+            total_error = np.concatenate((position_delta, orientation_delta))
+            error_norm = np.linalg.norm(total_error)
 
-            #Calculate JACOBIAN
-            J = self.ef_jacobian(thetas)
-            J_psuedo = np.linalg.pinv(J) #TODO: check that left vs right pseudoinv is covered here
+            if error_norm < tolerance:
+                return joint_angles
 
-            # Damped least-squares regularization (idk this is from chat)
-            # lambda_factor = 0.01
-            # J_damped = np.matmul(J.T, J) + lambda_factor * np.eye(J.shape[1])
-            # cost_gradient = np.matmul(np.linalg.pinv(J_damped), error)
+            jacobian_matrices = self.jacobians(joint_angles)
+            jacobian = jacobian_matrices[:, :, -1]
+            jacobian_pinv = np.linalg.pinv(jacobian, rcond=1e-6)
 
-            cost_gradient = np.matmul(J_psuedo, error)
+            delta_angles = learning_rate * jacobian_pinv @ total_error
+            joint_angles += delta_angles
 
-            # print(":D")
-            # print(cost_gradient.T[0])
-            # print(cost_gradient)
-            # print(cost_gradient.T[0].shape)
-            # print(thetas)
-            # print(thetas.shape)
-            
-            thetas += (step_size * cost_gradient.T[0])
+        return joint_angles
 
-            # print("********************************************************************")
-            # print("********************************************************************")
-            print(np.linalg.norm(cost_gradient))
-            # print(np.linalg.norm(cost_gradient.T[0]))
-            # print("********************************************************************")
-            # print("********************************************************************")
 
-            if np.linalg.norm(cost_gradient) < stopping_condition:
-                print("FINISHED YAY")
-                print(num_iter)
-                return thetas
-            num_iter+=1
-        
-        print("RAN OUT OF ITERATIONS")
-        print(np.linalg.norm(cost_gradient))
-        print("target pose: ")
-        print(target_pose)
-        return thetas
+
+
+
+
+
+
+
+
+
+
+    
         # --------------- END STUDENT SECTION --------------------------------------------------
+
+    def _get_transform(self,R,d):
+        transform = np.array([
+            [R[0,0],R[0,1],R[0,2],d[0]],
+            [R[1,0],R[1,1],R[1,2],d[1]],
+            [R[2,0],R[2,1],R[2,2],d[2]],
+            [0,0,0,1]
+        ])
+        return transform
+    
+    def _get_dh_parameters(self, thetas):
+        dh_matrix = np.array([
+            [0, 0, 0.333, thetas[0]],
+            [0, -np.pi/2, 0, thetas[1]],
+            [0, np.pi/2, 0.316, thetas[2]],
+            [0.0825, np.pi/2, 0, thetas[3]],
+            [-0.0825, -np.pi/2, 0.384, thetas[4]],
+            [0, np.pi/2, 0, thetas[5]],
+            [0.088, np.pi/2, 0.107+0.1034, thetas[6]]
+        ])
+    
+        return dh_matrix
+    
+    def _rotation_to_axis_angle(self,R):
+        axis = np.cross(R[:,0], R[:,1])
+        k = axis/np.linalg.norm(axis)
+        theta = np.arccos((np.trace(R)-1) / 2)
+
+        return k,theta
+    
+    def _axis_angle_to_rotation(self,axis,angle):
+        x, y, z = axis
+        theta = angle
+        cos = np.cos(theta)
+        sin = np.sin(theta)
+        v = 1 - cos
+
+        R = np.array([
+            [cos + x*x*v, x*y*v - z*sin, x*z*v + y*sin],
+            [y*x*v + z*sin, cos + y*y*v, y*z*v - x*sin],
+            [z*x*v - y*sin, z*y*v + x*sin, cos + z*z*v]
+        ])
+
+        return R
+    
+    def _compute_config_error(self, current_pose, target_pose):
+        current_pose = np.array(current_pose)
+        target_pose = np.array(target_pose)
+
+        current_translation = current_pose[:3,3]
+        target_translation = target_pose[:3,3]
+        diff_translation = current_translation - target_translation
+
+        current_R = current_pose[:3,:3]
+        target_R = target_pose[:3,:3]
+
+        diff_R = current_R @ target_R.T
+
+        trace = np.trace(diff_R)
+
+        cos_theta = (trace - 1)/2 
+        cos_theta = np.clip(cos_theta, -1.0, 1.0)
+        theta = np.arccos(cos_theta) 
+
+        if abs(theta) < 1e-7:
+            diff_rotation = np.zeros(3)
+        else:
+            axis_denominator = 2 * np.sin(theta)
+            if abs(axis_denominator) < 1e-7:
+                diff_rotation = np.zeros(3)
+            else:
+                axis = (1 / axis_denominator) * np.array([
+                    diff_R[2, 1] - diff_R[1, 2],
+                    diff_R[0, 2] - diff_R[2, 0],
+                    diff_R[1, 0] - diff_R[0, 1]
+                ])
+                axis_norm = np.linalg.norm(axis)
+                if axis_norm < 1e-6:
+                    diff_rotation = np.zeros(3)
+                else:
+                    axis = axis / axis_norm
+                    diff_rotation = theta * axis
+
+        return np.hstack((diff_translation, diff_rotation))
+
+
+        # if np.linalg.norm(diff_R - np.eye(3)) < 1e-6:
+        #     diff_rotation = np.zeros(3)
+        #     return np.hstack((diff_translation,diff_rotation))
+
+        # trace = np.trace(diff_R)
+        # theta = np.arccos((trace-1)/ 2)
+        # if np.linalg.norm(theta)<1e-6:
+        #     diff_rotation = np.zeros(3)
+        #     return np.hstack((diff_translation,diff_rotation))
+        # axis = (1 / (2*np.sin(theta))) * np.array([diff_R[2,1] - diff_R[1,2], diff_R[0,2] - diff_R[2,0], diff_R[1,0] - diff_R[0,1]])
+        
+        # if np.linalg.norm(axis)<1e-6:
+        #     diff_rotation = np.zeros(3)
+        #     return np.hstack((diff_translation,diff_rotation))
+        # else:
+        #     diff_rotation = theta * axis
+        #     return np.hstack((diff_translation,diff_rotation))
+    
+    # def _jacobian_pseudoinverse(self,J):
+    #     U,S,VT = np.linalg.svd(J,full_matrices=False)
+    #     V = np.transpose(VT)
+    #     S_inv = np.zeros_like(S)
+    #     for i in range(len(S)):
+    #         if S[i] > 1e-5:
+    #             S_inv[i] = 1 / S[i]
+    #     S_inv = np.diag(S_inv)
+    #     J_psi = V @ S_inv @ np.transpose(U)
+
+    #     return J_psi
